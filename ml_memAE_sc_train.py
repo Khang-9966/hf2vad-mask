@@ -126,7 +126,7 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                 auc = ml_memAE_sc_eval.evaluate(config, model_save_path + "-%d" % (epoch + 1),
                                                 testing_chunked_samples_file,
                                                 suffix=str(epoch + 1))
-                print("================ Best AUC %.4f ================" % auc)  
+                print("================ Epoch AUC %.4f ================" % auc)  
                 print("================ Best AUC %.4f ================" % best_auc)                
                 if auc > best_auc:
                     best_auc = auc
