@@ -75,11 +75,11 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, suffix):
     frame_bbox_scores = [{} for i in range(testset_num_frames.item())]
 
     for ii, test_data in tqdm(enumerate(dataloader_test), desc="Eval: ", total=len(dataloader_test)):
-        _, sample_ofs_test, bbox_test, pred_frame_test, indices_test = test_data
-        sample_ofs_test = sample_ofs_test.cuda()
+        _, sample_ofs_test, sample_masks_test, bbox_test, pred_frame_test, indices_test = test_data
+        sample_masks_test = sample_masks_test.cuda()
 
-        out_test = model(sample_ofs_test)
-        loss_of_test = score_func(out_test["recon"], sample_ofs_test).cpu().data.numpy()
+        out_test = model(sample_masks_test)
+        loss_of_test = score_func(out_test["recon"], sample_masks_test).cpu().data.numpy()
         scores = np.sum(np.sum(np.sum(loss_of_test, axis=3), axis=2), axis=1)
 
         # anomaly scores for each sample

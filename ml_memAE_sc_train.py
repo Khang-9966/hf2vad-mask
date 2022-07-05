@@ -73,11 +73,11 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                                         total=len(dataloader)):
                 model.train()
 
-                _, sample_ofs, _, _, _ = train_data
-                sample_ofs = sample_ofs.to(device)
+                _, _,sample_masks, _, _, _ = train_data
+                sample_masks = sample_masks.to(device)
 
-                out = model(sample_ofs)
-                loss_recon = mse_loss(out["recon"], sample_ofs)
+                out = model(sample_masks)
+                loss_recon = mse_loss(out["recon"], sample_masks)
                 loss_sparsity = (
                         torch.mean(torch.sum(-out["att_weight3"] * torch.log(out["att_weight3"] + 1e-12), dim=1))
                         + torch.mean(torch.sum(-out["att_weight2"] * torch.log(out["att_weight2"] + 1e-12), dim=1))
@@ -100,14 +100,14 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                     num_vis = 6
                     writer.add_figure("img/train_sample_ofs",
                                       visualize_sequences(
-                                          img_batch_tensor2numpy(sample_ofs.cpu()[:num_vis, :, :, :]),
-                                          seq_len=sample_ofs.size(1) // 2,
+                                          img_batch_tensor2numpy(sample_masks.cpu()[:num_vis, :, :, :]),
+                                          seq_len=sample_masks.size(1) ,
                                           return_fig=True),
                                       global_step=step + 1)
                     writer.add_figure("img/train_output",
                                       visualize_sequences(img_batch_tensor2numpy(
                                           out["recon"].detach().cpu()[:num_vis, :, :, :]),
-                                          seq_len=out["recon"].size(1) // 2,
+                                          seq_len=out["recon"].size(1) ,
                                           return_fig=True),
                                       global_step=step + 1)
                     writer.add_scalar('learning_rate', scheduler.get_last_lr()[0], global_step=step + 1)
@@ -126,6 +126,8 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                 auc = ml_memAE_sc_eval.evaluate(config, model_save_path + "-%d" % (epoch + 1),
                                                 testing_chunked_samples_file,
                                                 suffix=str(epoch + 1))
+                print("================ Best AUC %.4f ================" % auc)  
+                print("================ Best AUC %.4f ================" % best_auc)                
                 if auc > best_auc:
                     best_auc = auc
                     only_model_saver(model.state_dict(), os.path.join(paths["ckpt_dir"], "best.pth"))
