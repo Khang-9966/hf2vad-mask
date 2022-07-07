@@ -197,7 +197,7 @@ class ped_dataset(common_dataset):
     '''
 
     def __init__(self, dir, mode='train', context_frame_num=0, border_mode="hard",
-                 file_format='.tif', all_bboxes=None, patch_size=32, of_dataset=False):
+                 file_format='.tif', all_bboxes=None, patch_size=32, of_dataset=False, mask_dataset=False):
         super(ped_dataset, self).__init__()
         self.dir = dir
         self.mode = mode
@@ -212,6 +212,7 @@ class ped_dataset(common_dataset):
         self.patch_size = patch_size
 
         self.of_dataset = of_dataset
+        self.mask_dataset = mask_dataset
 
         self.return_gt = False
         if mode == 'test':
@@ -227,9 +228,13 @@ class ped_dataset(common_dataset):
         if self.mode == 'train':
             data_dir = os.path.join(self.dir, 'training', 'frames') if not self.of_dataset \
                 else os.path.join(self.dir, 'training', "flows")
+            if self.mask_dataset:
+                data_dir = os.path.join(self.dir, 'training', 'masks')
         elif self.mode == 'test':
             data_dir = os.path.join(self.dir, 'testing', 'frames') if not self.of_dataset \
                 else os.path.join(self.dir, 'testing', "flows")
+            if self.mask_dataset:
+                data_dir = os.path.join(self.dir, 'testing', 'masks')
         else:
             raise NotImplementedError
 
@@ -301,7 +306,8 @@ class ped_dataset(common_dataset):
             img_batch = []
             for idx in frame_range:
                 # [h,w,c] -> [c,h,w] BGR
-                cur_img = np.transpose(get_inputs(self.all_frame_addr[idx]), [2, 0, 1])
+                cur_img = np.transpose(get_inputs(self.all_frame_addr[idx],self.mask_dataset), [2, 0, 1])
+#                 cur_img = np.transpose(get_inputs(self.all_frame_addr[idx]), [2, 0, 1])
                 img_batch.append(cur_img)
             img_batch = np.array(img_batch)
 
@@ -316,7 +322,8 @@ class ped_dataset(common_dataset):
             frame_range = self._context_range(indice=indice)
             img_batch = []
             for idx in frame_range:
-                cur_img = np.transpose(get_inputs(self.all_frame_addr[idx]), [2, 0, 1])  # [3,h,w]
+                cur_img = np.transpose(get_inputs(self.all_frame_addr[idx],self.mask_dataset), [2, 0, 1])
+#                 cur_img = np.transpose(get_inputs(self.all_frame_addr[idx]), [2, 0, 1])  # [3,h,w]
                 img_batch.append(cur_img)
             img_batch = np.array(img_batch)
             if self.all_bboxes is not None:
@@ -687,7 +694,7 @@ def get_dataset(dataset_name, dir, mode='train', context_frame_num=0, border_mod
     if dataset_name == "ped2":
         dataset = ped_dataset(dir=dir, context_frame_num=context_frame_num, mode=mode, border_mode=border_mode,
                               all_bboxes=all_bboxes, patch_size=patch_size, file_format=img_ext,
-                              of_dataset=of_dataset)
+                              of_dataset=of_dataset,mask_dataset=mask_dataset)
     elif dataset_name == 'avenue':
         dataset = avenue_dataset(dir=dir, context_frame_num=context_frame_num, mode=mode, border_mode=border_mode,
                                  all_bboxes=all_bboxes, patch_size=patch_size, file_format=img_ext,
