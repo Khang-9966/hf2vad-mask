@@ -10,11 +10,11 @@ model_paras:
 
 # exp settings
 dataset_base_dir: ./data
-dataset_name: shanghaitech
-exp_name: shanghaitech_ML_MemAE_SC
-ckpt_root: /home/jovyan/workspace/Checkpoints/shanghaitech-flow2mask-seq/ckpt
-log_root: /home/jovyan/workspace/Checkpoints/shanghaitech-flow2mask-seq/log
-eval_root: /home/jovyan/workspace/Checkpoints/shanghaitech-flow2mask-seq/eval
+dataset_name: ped2
+exp_name: ped2_ML_MemAE_SC
+ckpt_root: ./ckpt
+log_root: ./log
+eval_root: ./eval
 device: cuda:0
 
 pretrained: False
