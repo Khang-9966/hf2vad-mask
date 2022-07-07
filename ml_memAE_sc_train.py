@@ -66,7 +66,7 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
     best_auc = -1
     for epoch in range(epoch_last, epochs + epoch_last):
         for chunk_file_idx, chunk_file in enumerate(training_chunk_samples_files):
-            dataset = Chunked_sample_dataset(os.path.join(training_chunked_samples_dir, chunk_file), last_flow=True)
+            dataset = Chunked_sample_dataset(os.path.join(training_chunked_samples_dir, chunk_file), last_flow=False)
             dataloader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
             for idx, train_data in tqdm(enumerate(dataloader),
                                         desc="Training Epoch %d, Chunk File %d" % (epoch + 1, chunk_file_idx),

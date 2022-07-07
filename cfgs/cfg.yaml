@@ -5,10 +5,10 @@ model_paras:
   spatial_size: 32
   dropout_prob: 0.1
   img_channels: 3
-  motion_channels: 2
+  motion_channels: 1
   clip_hist: 4
   clip_pred: 1
-  num_flows: 4
+  num_flows: 5
   # ML-MemAE-SC
   feature_root: 32
   num_slots: 2000
@@ -24,7 +24,7 @@ ckpt_root: /home/jovyan/workspace/Checkpoints/shanghaitech-flow2mask/ckpt
 log_root: /home/jovyan/workspace/Checkpoints/shanghaitech-flow2mask/log
 eval_root: /home/jovyan/workspace/Checkpoints/shanghaitech-flow2mask/eval
 
-ML_MemAE_SC_pretrained: ./ckpt/ped2_ML_MemAE_SC/best.pth
+ML_MemAE_SC_pretrained: /home/jovyan/workspace/Checkpoints/shanghaitech-flow2mask/ckpt/shanghaitech_ML_MemAE_SC/best.pth
 pretrained: False
 model_savename: model.pth
 # num of iterations to log
