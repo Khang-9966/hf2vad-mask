@@ -21,8 +21,12 @@ def visualize_sequences(batch, seq_len, return_fig=True):
             # to RGB
             sequence = [cur_sample[:, :, j * channels_per_frame:(j + 1) * channels_per_frame][:, :, ::-1]
                         for j in range(seq_len)]
+            
         sequences.append(np.hstack(sequence))
+    
     sequences = np.vstack(sequences)
+    if channels_per_frame == 1:
+        sequences = ((sequences-sequences.min())/(sequences.max()-sequences.min())*255).astype(np.uint8)
 
     if return_fig:
         fig = plt.figure()

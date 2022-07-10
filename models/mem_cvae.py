@@ -48,6 +48,8 @@ class HFVAD(nn.Module):
         for j in range(self.num_hist):
             memAE_out = self.memAE(sample_of[:, 1 * j:1 * (j + 1), :, :])
             of_recon[:, 1 * j:1 * (j + 1), :, :] = memAE_out["recon"]
+            #memAE_out = self.memAE(sample_of)
+            #of_recon = memAE_out["recon"]
             att_weight3_cache.append(memAE_out["att_weight3"])
             att_weight2_cache.append(memAE_out["att_weight2"])
             att_weight1_cache.append(memAE_out["att_weight1"])

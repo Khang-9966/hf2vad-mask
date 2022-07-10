@@ -740,7 +740,7 @@ class Chunked_sample_dataset(Dataset):
         x = np.reshape(x, (x.shape[0], x.shape[1], -1))
         
         # [#frame,h,w,c] to [h,w,#frame,c]
-        mask_x = mask_appearance if not self.last_flow else mask_appearance[-1:]
+        mask_x = mask_appearance[:-1] if not self.last_flow else mask_appearance[-1:]
         mask_x = np.transpose(mask_x, [1, 2, 0, 3])
         mask_x = np.reshape(mask_x, (mask_x.shape[0], mask_x.shape[1], -1))
 
