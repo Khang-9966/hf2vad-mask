@@ -75,11 +75,11 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                                         total=len(dataloader)):
                 model.train()
 
-                sample_frames, sample_ofs, _, _, _ = train_data
-                sample_ofs = sample_ofs.to(device)
+                sample_frames, sample_ofs, sample_masks, _, _, _ = train_data
+                sample_masks = sample_masks.to(device)
                 sample_frames = sample_frames.to(device)
 
-                out = model(sample_frames, sample_ofs, mode="train")
+                out = model(sample_frames, sample_masks, mode="train")
 
                 # loss of ML-MemAE-SC
                 loss_sparsity = out["loss_sparsity"]
@@ -125,14 +125,14 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                     # memAE输入的光流和重建的光流
                     writer.add_figure("img/train_of_target",
                                       visualize_sequences(img_batch_tensor2numpy(
-                                          sample_ofs.cpu()[:num_vis, :, :, :]),
-                                          seq_len=sample_ofs.size(1) // 2,
+                                          sample_masks.cpu()[:num_vis, :, :, :]),
+                                          seq_len=sample_masks.size(1) ,
                                           return_fig=True),
                                       global_step=step + 1)
                     writer.add_figure("img/train_of_recon",
                                       visualize_sequences(img_batch_tensor2numpy(
                                           out["of_recon"].detach().cpu()[:num_vis, :, :, :]),
-                                          seq_len=sample_ofs.size(1) // 2,
+                                          seq_len=sample_masks.size(1) ,
                                           return_fig=True),
                                       global_step=step + 1)
 
@@ -161,7 +161,7 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                 if auc > best_auc:
                     best_auc = auc
                     only_model_saver(model.state_dict(), os.path.join(paths["ckpt_dir"], "best.pth"))
-
+                print("================ Best AUC %.4f ================" % best_auc)
                 writer.add_scalar("auc", auc, global_step=epoch + 1)
 
 
@@ -197,11 +197,11 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
             for idx, data in tqdm(enumerate(dataloader),
                                   desc="Training stats calculating, Chunked File %02d" % chunk_file_idx,
                                   total=len(dataloader)):
-                sample_frames, sample_ofs, _, _, _ = data
+                sample_frames, _, sample_masks, _, _, _ = data
                 sample_frames = sample_frames.to(device)
-                sample_ofs = sample_ofs.to(device)
+                sample_masks = sample_masks.to(device)
 
-                out = model(sample_frames, sample_ofs, mode="test")
+                out = model(sample_frames, sample_masks, mode="test")
 
                 loss_frame = score_func(out["frame_pred"], out["frame_target"]).cpu().data.numpy()
                 loss_of = score_func(out["of_recon"], out["of_target"]).cpu().data.numpy()
