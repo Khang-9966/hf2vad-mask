@@ -59,7 +59,7 @@ class ML_MemAE_SC(nn.Module):
         self.num_mem = sum(mem_usage)
         self.skip_ops = skip_ops
 
-        self.in_conv = inconv(num_in_ch * seq_len, features_root)
+        self.in_conv = inconv(num_in_ch * seq_len * 3, features_root)
         self.down_1 = down(features_root, features_root * 2)
         self.down_2 = down(features_root * 2, features_root * 4)
         self.down_3 = down(features_root * 4, features_root * 8)

@@ -12,7 +12,7 @@ import yaml
 from models.mem_cvae import HFVAD
 from datasets.dataset import Chunked_sample_dataset
 from utils.eval_utils import save_evaluation_curves,evaluation
-
+from pytorch_msssim import  ms_ssim, SSIM, MS_SSIM
 METADATA = {
     "ped2": {
         "testing_video_num": 12,
@@ -87,6 +87,8 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
     of_scores_list = []
     frame_scores_list = []
     pred_frame_test_list = []
+    torch_ssim = SSIM(data_range=1, size_average=False, channel=3 ,win_size=7)
+
     for test_data in tqdm(dataloader_test, desc="Eval: ", total=len(dataloader_test)):
 
         sample_frames_test, _, sample_masks_test, bbox_test, pred_frame_test, indices_test = test_data
@@ -94,12 +96,15 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
         sample_masks_test = sample_masks_test.to(device)
 
         out_test = model(sample_frames_test, sample_masks_test, mode="test")
-
+        
+        
         loss_of_test = score_func(out_test["of_recon"], out_test["of_target"]).cpu().data.numpy()
-        loss_frame_test = score_func(out_test["frame_pred"], out_test["frame_target"]).cpu().data.numpy()
+        # loss_frame_test = score_func(out_test["frame_pred"], out_test["frame_target"]).cpu().data.numpy()
+        loss_frame_test = 1-torch_ssim(out_test["frame_pred"].cuda(), out_test["frame_target"].cuda()).cpu().data.numpy()
 
         of_scores = np.sum(np.sum(np.sum(loss_of_test, axis=3), axis=2), axis=1)
-        frame_scores = np.sum(np.sum(np.sum(loss_frame_test, axis=3), axis=2), axis=1)
+        # frame_scores = np.sum(np.sum(np.sum(loss_frame_test, axis=3), axis=2), axis=1)
+        frame_scores = loss_frame_test
 
         if training_stats_path is not None:
             # mean-std normalization
@@ -114,7 +119,7 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
     best_auc = 0
     best_w_r = 0
     best_w_p = 0
-    for w_r_ in  np.arange(0,0.2,0.05):
+    for w_r_ in  np.arange(0,1.5,0.05):
       for w_p_ in np.arange(0,1.5,0.05):
         frame_bbox_scores = [{} for i in range(testset_num_frames.item())]
         for batch_index in range(len(frame_scores_list)):
@@ -314,12 +319,12 @@ if __name__ == '__main__':
     testing_chunked_samples_file = os.path.join("./data", config["dataset_name"],
                                                 "testing/chunked_samples/chunked_samples_00.pkl")
 
-    from train import cal_training_stats
+    from train import cal_training_stats_ssim
 
     os.makedirs(os.path.join("./eval", config["exp_name"]), exist_ok=True)
     training_chunked_samples_dir = os.path.join("./data", config["dataset_name"], "training/chunked_samples")
-    training_stat_path = os.path.join("./eval", config["exp_name"], "training_stats.npy")
-    cal_training_stats(config, args.model_save_path, training_chunked_samples_dir, training_stat_path)
+    training_stat_path = os.path.join("./eval", config["exp_name"], "training_stats_ssim.npy")
+    cal_training_stats_ssim(config, args.model_save_path, training_chunked_samples_dir, training_stat_path)
 
     with torch.no_grad():
         auc = evaluate(config, args.model_save_path,

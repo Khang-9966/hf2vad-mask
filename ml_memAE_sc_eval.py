@@ -68,17 +68,18 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, suffix):
 
     score_func = nn.MSELoss(reduction="none")
 
-    dataset_test = Chunked_sample_dataset(testing_chunked_samples_file, last_flow=False)
-    dataloader_test = DataLoader(dataset=dataset_test, batch_size=128, num_workers=num_workers, shuffle=False)
+    dataset_test = Chunked_sample_dataset(testing_chunked_samples_file, last_flow=True)
+    dataloader_test = DataLoader(dataset=dataset_test, batch_size=128, num_workers=num_workers, shuffle=True)
 
     # bbox anomaly scores for each frame
     frame_bbox_scores = [{} for i in range(testset_num_frames.item())]
 
     for ii, test_data in tqdm(enumerate(dataloader_test), desc="Eval: ", total=len(dataloader_test)):
-        _, sample_ofs_test, sample_masks_test, bbox_test, pred_frame_test, indices_test = test_data
+        sample_images_test, sample_ofs_test, sample_masks_test, bbox_test, pred_frame_test, indices_test = test_data
         sample_masks_test = sample_masks_test.cuda()
-
-        out_test = model(sample_masks_test)
+        sample_images_test = sample_images_test.cuda()
+        
+        out_test = model(sample_images_test[:,-3:,:,:])
         loss_of_test = score_func(out_test["recon"], sample_masks_test).cpu().data.numpy()
         scores = np.sum(np.sum(np.sum(loss_of_test, axis=3), axis=2), axis=1)
 

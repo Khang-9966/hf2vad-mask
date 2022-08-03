@@ -66,17 +66,17 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
     best_auc = -1
     for epoch in range(epoch_last, epochs + epoch_last):
         for chunk_file_idx, chunk_file in enumerate(training_chunk_samples_files):
-            dataset = Chunked_sample_dataset(os.path.join(training_chunked_samples_dir, chunk_file), last_flow=False)
+            dataset = Chunked_sample_dataset(os.path.join(training_chunked_samples_dir, chunk_file), last_flow=True)
             dataloader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
             for idx, train_data in tqdm(enumerate(dataloader),
                                         desc="Training Epoch %d, Chunk File %d" % (epoch + 1, chunk_file_idx),
                                         total=len(dataloader)):
                 model.train()
 
-                _, _,sample_masks, _, _, _ = train_data
+                sample_images, _,sample_masks, _, _, _ = train_data
                 sample_masks = sample_masks.to(device)
-
-                out = model(sample_masks)
+                sample_images = sample_images.to(device)
+                out = model(sample_images[:,-3:,:,:])
                 loss_recon = mse_loss(out["recon"], sample_masks)
                 loss_sparsity = (
                         torch.mean(torch.sum(-out["att_weight3"] * torch.log(out["att_weight3"] + 1e-12), dim=1))
@@ -100,8 +100,8 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                     num_vis = 6
                     writer.add_figure("img/train_sample_ofs",
                                       visualize_sequences(
-                                          img_batch_tensor2numpy(sample_masks.cpu()[:num_vis, :, :, :]),
-                                          seq_len=sample_masks.size(1) ,
+                                          img_batch_tensor2numpy(sample_images.cpu()[:num_vis, -3:, :, :]),
+                                          seq_len=sample_images[:num_vis, -3:, :, :].size(1) //3 ,
                                           return_fig=True),
                                       global_step=step + 1)
                     writer.add_figure("img/train_output",

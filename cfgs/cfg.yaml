@@ -20,11 +20,11 @@ device: cuda:0
 dataset_base_dir: ./data
 dataset_name: shanghaitech
 exp_name: shanghaitech_ML_MemAE_SC_CVAE
-ckpt_root: /home/jovyan/workspace/Checkpoints/shanghaitech-flow2mask-fix/ckpt
-log_root: /home/jovyan/workspace/Checkpoints/shanghaitech-flow2mask-fix/log
-eval_root: /home/jovyan/workspace/Checkpoints/shanghaitech-flow2mask-fix/eval
+ckpt_root: /home/jovyan/workspace/Checkpoints/shanghaitech-img2mask/ckpt
+log_root: /home/jovyan/workspace/Checkpoints/shanghaitech-img2mask/log
+eval_root: /home/jovyan/workspace/Checkpoints/shanghaitech-img2mask/eval
 
-ML_MemAE_SC_pretrained: /home/jovyan/workspace/Checkpoints/shanghaitech-flow2mask/ckpt/shanghaitech_ML_MemAE_SC/best.pth
+ML_MemAE_SC_pretrained: /home/jovyan/workspace/Checkpoints/shanghaitech-img2mask/ckpt/shanghaitech_ML_MemAE_SC/best.pth
 pretrained: False
 model_savename: model.pth
 # num of iterations to log

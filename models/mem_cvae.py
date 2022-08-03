@@ -46,7 +46,7 @@ class HFVAD(nn.Module):
 
         # reconstruct flows
         for j in range(self.num_hist):
-            memAE_out = self.memAE(sample_of[:, 1 * j:1 * (j + 1), :, :])
+            memAE_out = self.memAE(sample_frame[:, 3 * j:3 * (j + 1), :, :])
             of_recon[:, 1 * j:1 * (j + 1), :, :] = memAE_out["recon"]
             #memAE_out = self.memAE(sample_of)
             #of_recon = memAE_out["recon"]
