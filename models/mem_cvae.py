@@ -53,10 +53,18 @@ class HFVAD(nn.Module):
             att_weight3_cache.append(memAE_out["att_weight3"])
             att_weight2_cache.append(memAE_out["att_weight2"])
             att_weight1_cache.append(memAE_out["att_weight1"])
-
+        
         att_weight3 = torch.cat(att_weight3_cache, dim=0)
         att_weight2 = torch.cat(att_weight2_cache, dim=0)
         att_weight1 = torch.cat(att_weight1_cache, dim=0)
+        
+#         bs , len_dot_3 ,h , w = sample_frame[:, :3 * self.num_hist, :, :].shape
+#         memAE_out = self.memAE(sample_frame[:, :3 * self.num_hist, :, :].contiguous().view(bs*len_dot_3//3,3,h,w))
+#         of_recon[:, : self.num_hist, :, :] = memAE_out["recon"].contiguous().view(bs,len_dot_3//3,h,w)
+#         att_weight3 = memAE_out["att_weight3"]
+#         att_weight2 = memAE_out["att_weight2"]
+#         att_weight1 = memAE_out["att_weight1"]
+
 
         if self.finetune:
             loss_recon = self.mse_loss(of_recon, sample_of)

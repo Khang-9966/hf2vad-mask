@@ -11,7 +11,7 @@ def samples_extraction(dataset_root, dataset_name, mode, all_bboxes, save_dir):
     if dataset_name == "ped2":
         num_samples_each_chunk = 100000
     elif dataset_name == "avenue":
-        num_samples_each_chunk = 200000 if mode == "test" else 20000
+        num_samples_each_chunk = 1000000 if mode == "test" else 1000000
     elif dataset_name == "shanghaitech":
         num_samples_each_chunk = 1000000 if mode == "test" else 1000000
     else:
