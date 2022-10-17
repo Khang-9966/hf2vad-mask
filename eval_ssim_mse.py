@@ -126,7 +126,7 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
     best_w_p = 0
     best_w_p_ssim = 0
     for w_r_ in  np.arange(0,1.5,0.05):
-      for w_p_ in np.arange(0,1.5,0.05):
+      for w_p_ in np.arange(0,0.05,0.05):
         for w_p_ssim_ in np.arange(0,1.5,0.05):
             frame_bbox_scores = [{} for i in range(testset_num_frames.item())]
             for batch_index in range(len(frame_scores_list)):
@@ -189,11 +189,11 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
               best_w_p_ssim = w_p_ssim_
               print(w_r_,w_p_,w_p_ssim_,best_auc)
 
-        curves_save_path = os.path.join(config["eval_root"], config["exp_name"], 'anomaly_curves_%s_ssim_mse' % suffix)
-        auc = save_evaluation_curves(best_frame_scores, gt_concat, curves_save_path,
-                                     np.array(METADATA[dataset_name]["testing_frames_cnt"]) - 4)
+    curves_save_path = os.path.join(config["eval_root"], config["exp_name"], 'anomaly_curves_%s_ssim_mse' % suffix)
+    auc = save_evaluation_curves(best_frame_scores, gt_concat, curves_save_path,
+                                 np.array(METADATA[dataset_name]["testing_frames_cnt"]) - 4)
 
-        return auc
+    return auc
 
 
 if __name__ == '__main__':

@@ -19,14 +19,14 @@ model_paras:
 
 device: cuda:0
 dataset_base_dir: ./data
-dataset_name: ped2
-exp_name: ped2_ML_MemAE_SC_CVAE_finetune
-ckpt_root: /home/jovyan/workspace/Checkpoints/ped2-img2mask/ckpt
-log_root: /home/jovyan/workspace/Checkpoints/ped2-img2mask/log
-eval_root: /home/jovyan/workspace/Checkpoints/ped2-img2mask/eval
+dataset_name: avenue
+exp_name: avenue_ML_MemAE_SC_CVAE_finetune
+ckpt_root: /home/jovyan/workspace/Checkpoints/avenue-img2mask-ssim/ckpt
+log_root: /home/jovyan/workspace/Checkpoints/avenue-img2mask-ssim/log
+eval_root: /home/jovyan/workspace/Checkpoints/avenue-img2mask-ssim/eval
 
 ML_MemAE_SC_pretrained: False
-pretrained: /home/jovyan/workspace/Checkpoints/ped2-img2mask/ckpt/ped2_ML_MemAE_SC_CVAE/best.pth
+pretrained: /home/jovyan/workspace/Checkpoints/avenue-img2mask-ssim/ckpt/avenue_ML_MemAE_SC_CVAE/best.pth
 model_savename: model.pth
 # num of iterations to log
 logevery: 100
