@@ -23,9 +23,16 @@ class HFVAD(nn.Module):
         self.finetune = finetune
 
         self.x_ch = 3  # num of RGB channels
-        self.y_ch = 1  # num of optical flow channels
+        self.mask_y_ch = 1  # num of optical flow channels
+        self.flow_y_ch = 2  # num of optical flow channels
 
-        self.memAE = ML_MemAE_SC(num_in_ch=self.y_ch, seq_len=1, features_root=self.features_root,
+        self.memAE = {}
+        self.memAE["mask"] = ML_MemAE_SC(num_in_ch=self.mask_y_ch, seq_len=1, features_root=self.features_root,
+                                 num_slots=self.num_slots, shrink_thres=self.shrink_thres,
+                                 mem_usage=self.mem_usage,
+                                 skip_ops=self.skip_ops)
+
+        self.memAE["flow"] = ML_MemAE_SC(num_in_ch=self.flow_y_ch, seq_len=1, features_root=self.features_root,
                                  num_slots=self.num_slots, shrink_thres=self.shrink_thres,
                                  mem_usage=self.mem_usage,
                                  skip_ops=self.skip_ops)
@@ -34,60 +41,70 @@ class HFVAD(nn.Module):
 
         self.mse_loss = nn.MSELoss()
 
-    def forward(self, sample_frame, sample_of, mode="train"):
+    def forward(self, sample_frame, sample_mask, sample_of, mode="train"):
         """
         :param sample_frame: 5 frames in a video clip
         :param sample_of: 4 corresponding flows
         :return:
         """
-        att_weight3_cache, att_weight2_cache, att_weight1_cache = [], [], []
 
-        of_recon = torch.zeros_like(sample_of)
-
+        mask_att_weight3_cache, mask_att_weight2_cache, mask_att_weight1_cache = [], [], []
+        mask_recon = torch.zeros_like(sample_mask)
         # reconstruct flows
         for j in range(self.num_hist):
-            memAE_out = self.memAE(sample_frame[:, 3 * j:3 * (j + 1), :, :])
-            of_recon[:, 1 * j:1 * (j + 1), :, :] = memAE_out["recon"]
-            #memAE_out = self.memAE(sample_of)
-            #of_recon = memAE_out["recon"]
-            att_weight3_cache.append(memAE_out["att_weight3"])
-            att_weight2_cache.append(memAE_out["att_weight2"])
-            att_weight1_cache.append(memAE_out["att_weight1"])
-        
-        att_weight3 = torch.cat(att_weight3_cache, dim=0)
-        att_weight2 = torch.cat(att_weight2_cache, dim=0)
-        att_weight1 = torch.cat(att_weight1_cache, dim=0)
-        
-#         bs , len_dot_3 ,h , w = sample_frame[:, :3 * self.num_hist, :, :].shape
-#         memAE_out = self.memAE(sample_frame[:, :3 * self.num_hist, :, :].contiguous().view(bs*len_dot_3//3,3,h,w))
-#         of_recon[:, : self.num_hist, :, :] = memAE_out["recon"].contiguous().view(bs,len_dot_3//3,h,w)
-#         att_weight3 = memAE_out["att_weight3"]
-#         att_weight2 = memAE_out["att_weight2"]
-#         att_weight1 = memAE_out["att_weight1"]
-
-
+            mask_memAE_out = self.memAE["mask"](sample_frame[:, 3 * j:3 * (j + 1), :, :])
+            mask_recon[:, 1 * j:1 * (j + 1), :, :] = mask_memAE_out["recon"]
+            mask_att_weight3_cache.append(mask_memAE_out["att_weight3"])
+            mask_att_weight2_cache.append(mask_memAE_out["att_weight2"])
+            mask_att_weight1_cache.append(mask_memAE_out["att_weight1"])
+        mask_att_weight3 = torch.cat(mask_att_weight3_cache, dim=0)
+        mask_att_weight2 = torch.cat(mask_att_weight2_cache, dim=0)
+        mask_att_weight1 = torch.cat(mask_att_weight1_cache, dim=0)
         if self.finetune:
-            loss_recon = self.mse_loss(of_recon, sample_of)
-            loss_sparsity = torch.mean(
-                torch.sum(-att_weight3 * torch.log(att_weight3 + 1e-12), dim=1)
+            mask_loss_recon = self.mse_loss(mask_recon, sample_mask)
+            mask_loss_sparsity = torch.mean(
+                torch.sum(-mask_att_weight3 * torch.log(mask_att_weight3 + 1e-12), dim=1)
             ) + torch.mean(
-                torch.sum(-att_weight2 * torch.log(att_weight2 + 1e-12), dim=1)
+                torch.sum(-mask_att_weight2 * torch.log(mask_att_weight2 + 1e-12), dim=1)
             ) + torch.mean(
-                torch.sum(-att_weight1 * torch.log(att_weight1 + 1e-12), dim=1)
+                torch.sum(-mask_att_weight1 * torch.log(mask_att_weight1 + 1e-12), dim=1)
             )
+
+        flow_att_weight3_cache, flow_att_weight2_cache, flow_att_weight1_cache = [], [], []
+        flow_recon = torch.zeros_like(sample_of)
+        # reconstruct flows
+        for j in range(self.num_hist):
+          flow_memAE_out = self.memAE["flow"](sample_frame[:, 3 * j:3 * (j + 2), :, :])
+          flow_recon[:, 2 * j:2 * (j + 1), :, :] = flow_memAE_out["recon"]
+          flow_att_weight3_cache.append(flow_memAE_out["att_weight3"])
+          flow_att_weight2_cache.append(flow_memAE_out["att_weight2"])
+          flow_att_weight1_cache.append(flow_memAE_out["att_weight1"])
+        flow_att_weight3 = torch.cat(flow_att_weight3_cache, dim=0)
+        flow_att_weight2 = torch.cat(flow_att_weight2_cache, dim=0)
+        flow_att_weight1 = torch.cat(flow_att_weight1_cache, dim=0)
+        if self.finetune:
+          flow_loss_recon = self.mse_loss(flow_recon, sample_of)
+          flow_loss_sparsity = torch.mean(
+              torch.sum(-flow_att_weight3 * torch.log(flow_att_weight3 + 1e-12), dim=1)
+          ) + torch.mean(
+              torch.sum(-flow_att_weight2 * torch.log(flow_att_weight2 + 1e-12), dim=1)
+          ) + torch.mean(
+              torch.sum(-flow_att_weight1 * torch.log(flow_att_weight1 + 1e-12), dim=1)
+          )
 
         frame_in = sample_frame[:, :-self.x_ch * self.num_pred, :, :]
         frame_target = sample_frame[:, -self.x_ch * self.num_pred:, :, :]
 
-        input_dict = dict(appearance=frame_in, motion=of_recon)
+        input_dict = dict(appearance=frame_in, mask=flow_recon, motion=mask_recon)
         frame_pred = self.vunet(input_dict, mode=mode)
 
         out = dict(frame_pred=frame_pred, frame_target=frame_target,
-                   of_recon=of_recon, of_target=sample_of)
+                   of_recon=flow_recon, of_target=sample_of, mask=mask_recon, mask_target=sample_mask)
         out.update(self.vunet.saved_tensors)
 
         if self.finetune:
-            ML_MemAE_SC_dict = dict(loss_recon=loss_recon, loss_sparsity=loss_sparsity)
+            ML_MemAE_SC_dict = dict(mask_loss_recon=mask_loss_recon, mask_loss_sparsity=mask_loss_sparsity,
+            flow_loss_recon=flow_loss_recon, flow_loss_sparsity=flow_loss_sparsity)
             out.update(ML_MemAE_SC_dict)
 
         return out
