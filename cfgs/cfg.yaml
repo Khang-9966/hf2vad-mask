@@ -5,7 +5,8 @@ model_paras:
   spatial_size: 32
   dropout_prob: 0.1
   img_channels: 3
-  motion_channels: 1
+  motion_channels: 2
+  mask_channels: 2
   clip_hist: 4
   clip_pred: 1
   num_flows: 4
@@ -18,13 +19,15 @@ model_paras:
 
 device: cuda:0
 dataset_base_dir: ./data
-dataset_name: avenue
-exp_name: avenue_ML_MemAE_SC_CVAE
-ckpt_root: /home/jovyan/workspace/Checkpoints/avenue-img2mask-ssim/ckpt
-log_root: /home/jovyan/workspace/Checkpoints/avenue-img2mask-ssim/log
-eval_root: /home/jovyan/workspace/Checkpoints/avenue-img2mask-ssim/eval
+dataset_name: ped2
+exp_name: ped2_ML_MemAE_SC_CVAE
+ckpt_root: ./ckpt
+log_root: ./log
+eval_root: ./eval
 
-ML_MemAE_SC_pretrained: /home/jovyan/workspace/Checkpoints/avenue-img2mask/ckpt/avenue_ML_MemAE_SC/best.pth
+mask_ML_MemAE_SC_pretrained: ./ckpt/ped2_mask_ML_MemAE_SC/best.pth
+flow_ML_MemAE_SC_pretrained: ./ckpt/ped2_flow_ML_MemAE_SC/best.pth
+
 pretrained: False
 model_savename: model.pth
 # num of iterations to log
