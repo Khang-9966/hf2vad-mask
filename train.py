@@ -50,12 +50,13 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                   ).to(device)
 
     # load ML_MemAE_SC weights and fix them
-    ML_MemAE_SC_state_dict = torch.load(config["ML_MemAE_SC_pretrained"])["model_state_dict"]
-    model.memAE.load_state_dict(ML_MemAE_SC_state_dict)
 
-    for param in model.memAE.parameters():
-        param.requires_grad = False
-    model.memAE.eval()
+    for condi_name in ["mask","flow"]:
+      model.memAE[condi_name].to(device)
+      model.memAE[condi_name].load_state_dict(torch.load(config[condi_name+"_ML_MemAE_SC_pretrained"])["model_state_dict"])
+      for param in model.memAE[condi_name].parameters():
+          param.requires_grad = False
+      model.memAE[condi_name].eval()
 
     optimizer = optim.Adam(model.vunet.parameters(), lr=lr, eps=1e-7, weight_decay=0.0)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.8)
@@ -83,11 +84,12 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                                         total=len(dataloader)):
                 model.vunet.train()
 
-                sample_frames, _, sample_masks, _, _, _ = train_data
+                sample_frames, sample_ofs, sample_masks, _, _, _ = train_data
                 sample_masks = sample_masks.to(device)
                 sample_frames = sample_frames.to(device)
+                sample_ofs = sample_ofs.to(device)
 
-                out = model(sample_frames, sample_masks, mode="train")
+                out = model(sample_frames, sample_masks, sample_ofs, mode="train")
 
                 loss_kl = aggregate_kl_loss(out["q_means"], out["p_means"])
                 loss_frame = intensity_loss(out["frame_pred"], out["frame_target"])
