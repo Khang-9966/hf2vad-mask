@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch import optim
 from tensorboardX import SummaryWriter
-
+import argparse
 from datasets.dataset import img_batch_tensor2numpy, Chunked_sample_dataset
 from models.ml_memAE_sc import ML_MemAE_SC
 from utils.initialization_utils import weights_init_kaiming
@@ -16,7 +16,7 @@ from utils.vis_utils import visualize_sequences
 import ml_memAE_sc_eval
 
 
-def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
+def train(config, training_chunked_samples_dir, testing_chunked_samples_file, config_path):
     paths = dict(log_dir="%s/%s" % (config["log_root"], config["exp_name"]),
                  ckpt_dir="%s/%s" % (config["ckpt_root"], config["exp_name"]))
     if not os.path.exists(paths["ckpt_dir"]):
@@ -59,8 +59,8 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
 
     writer = SummaryWriter(paths["log_dir"])
     # copy config file
-    shutil.copyfile("./cfgs/ml_memAE_sc_cfg.yaml",
-                    os.path.join(config["log_root"], config["exp_name"], "ml_memAE_sc_cfg.yaml"))
+    shutil.copyfile(config_path,
+                    os.path.join(config["log_root"], config["exp_name"], config["model_paras"]["type"]+"_"+"ml_memAE_sc_cfg.yaml"))
 
     # Training
     best_auc = -1
@@ -72,12 +72,18 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                                         desc="Training Epoch %d, Chunk File %d" % (epoch + 1, chunk_file_idx),
                                         total=len(dataloader)):
                 model.train()
-
-                sample_images, _,sample_masks, _, _, _ = train_data
-                sample_masks = sample_masks.to(device)
-                sample_images = sample_images.to(device)
-                out = model(sample_images[:,-3:,:,:])
-                loss_recon = mse_loss(out["recon"], sample_masks)
+                if config["model_paras"]["type"] == "flow" : 
+                  sample_images, sample_flows,_, _, _, _ = train_data
+                  sample_flows = sample_flows.to(device)
+                  sample_images = sample_images.to(device)
+                  out = model(sample_images[:,-6:,:,:])
+                  loss_recon = mse_loss(out["recon"], sample_flows)
+                elif config["model_paras"]["type"] == "mask" : 
+                  sample_images, _,sample_masks, _, _, _ = train_data
+                  sample_masks = sample_masks.to(device)
+                  sample_images = sample_images.to(device)
+                  out = model(sample_images[:,-3:,:,:])
+                  loss_recon = mse_loss(out["recon"], sample_masks)
                 loss_sparsity = (
                         torch.mean(torch.sum(-out["att_weight3"] * torch.log(out["att_weight3"] + 1e-12), dim=1))
                         + torch.mean(torch.sum(-out["att_weight2"] * torch.log(out["att_weight2"] + 1e-12), dim=1))
@@ -98,6 +104,7 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                     writer.add_scalar('loss_sparsity/train', config["lam_sparse"] * loss_sparsity, global_step=step + 1)
 
                     num_vis = 6
+                
                     writer.add_figure("img/train_sample_ofs",
                                       visualize_sequences(
                                           img_batch_tensor2numpy(sample_images.cpu()[:num_vis, -3:, :, :]),
@@ -107,7 +114,7 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                     writer.add_figure("img/train_output",
                                       visualize_sequences(img_batch_tensor2numpy(
                                           out["recon"].detach().cpu()[:num_vis, :, :, :]),
-                                          seq_len=out["recon"].size(1) ,
+                                          seq_len=out["recon"].size(1) // out["recon"].shape[1],
                                           return_fig=True),
                                       global_step=step + 1)
                     writer.add_scalar('learning_rate', scheduler.get_last_lr()[0], global_step=step + 1)
@@ -138,7 +145,11 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
 
 
 if __name__ == '__main__':
-    config = yaml.safe_load(open("./cfgs/ml_memAE_sc_cfg.yaml"))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_path", type=str, default="./cfgs/ml_memAE_sc_cfg.yaml", help='config path')
+    args = parser.parse_args()
+    print(args.config_path)
+    config = yaml.safe_load(open(args.config_path))
 
     dataset_name = config["dataset_name"]
     dataset_base_dir = config["dataset_base_dir"]
@@ -146,4 +157,4 @@ if __name__ == '__main__':
     testing_chunked_samples_file = os.path.join(dataset_base_dir, dataset_name,
                                                 "testing/chunked_samples/chunked_samples_00.pkl")
 
-    train(config, training_chunked_samples_dir, testing_chunked_samples_file)
+    train(config, training_chunked_samples_dir, testing_chunked_samples_file, args.config_path)
