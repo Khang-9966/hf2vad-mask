@@ -76,13 +76,17 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, suffix):
 
     for ii, test_data in tqdm(enumerate(dataloader_test), desc="Eval: ", total=len(dataloader_test)):
         sample_images_test, sample_ofs_test, sample_masks_test, bbox_test, pred_frame_test, indices_test = test_data
-        sample_masks_test = sample_masks_test.cuda()
         sample_images_test = sample_images_test.cuda()
-        
-        out_test = model(sample_images_test[:,-3:,:,:])
-        loss_of_test = score_func(out_test["recon"], sample_masks_test).cpu().data.numpy()
-        scores = np.sum(np.sum(np.sum(loss_of_test, axis=3), axis=2), axis=1)
+        if config["model_paras"]["type"] == "flow" : 
+          sample_ofs_test = sample_ofs_test.cuda()
+          out_test = model(sample_images_test[:,-6:,:,:])
+          loss_of_test = score_func(out_test["recon"], sample_ofs_test).cpu().data.numpy()
+        elif config["model_paras"]["type"] == "mask" : 
+          sample_masks_test = sample_masks_test.cuda()
+          out_test = model(sample_images_test[:,-3:,:,:])
+          loss_of_test = score_func(out_test["recon"], sample_masks_test).cpu().data.numpy()
 
+        scores = np.sum(np.sum(np.sum(loss_of_test, axis=3), axis=2), axis=1)
         # anomaly scores for each sample
         for i in range(len(scores)):
             frame_bbox_scores[pred_frame_test[i][-1].item()][i] = scores[i]
