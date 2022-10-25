@@ -363,9 +363,11 @@ class VUnet(nn.Module):
         dropout_prob = retrieve(config, "model_paras/dropout_prob", default=0.1)
         img_channels = retrieve(config, "model_paras/img_channels", default=3)
         motion_channels = retrieve(config, "model_paras/motion_channels", default=2)
+        mask_channels = retrieve(config, "model_paras/mask_channels", default=1)
         clip_hist = retrieve(config, "model_paras/clip_hist", default=4)
         clip_pred = retrieve(config, "model_paras/clip_pred", default=1)
         num_flows = retrieve(config, "model_paras/num_flows", default=4)
+        num_masks = retrieve(config, "model_paras/num_masks", default=4)
         device = retrieve(config, "device", default="cuda:0")
         output_channels = img_channels * clip_pred
 
@@ -377,7 +379,7 @@ class VUnet(nn.Module):
         # prosterior p( z | x_{1:t},y_{1:t} )
         self.f_phi = VUnetEncoder(
             n_stages=n_stages,
-            nf_in=img_channels * clip_hist + motion_channels * num_flows,
+            nf_in=img_channels * clip_hist + motion_channels * num_flows + mask_channels * num_masks,
             nf_start=nf_start,
             nf_max=nf_max,
             conv_layer=conv_layer_type,
@@ -385,7 +387,15 @@ class VUnet(nn.Module):
         )
 
         # prior p(z|y_{1:t})
-        self.e_theta = VUnetEncoder(
+        self.e_theta_mask = VUnetEncoder(
+            n_stages=n_stages,
+            nf_in=mask_channels * num_masks,
+            nf_start=nf_start,
+            nf_max=nf_max,
+            conv_layer=conv_layer_type,
+            dropout_prob=dropout_prob,
+        )
+        self.e_theta_flow = VUnetEncoder(
             n_stages=n_stages,
             nf_in=motion_channels * num_flows,
             nf_start=nf_start,
@@ -423,6 +433,12 @@ class VUnet(nn.Module):
             dropout_prob=dropout_prob,
         )
         self.saved_tensors = None
+        self.flow_global_avgpooling = nn.AvgPool2d(kernel_size=4)
+        self.mask_global_avgpooling = nn.AvgPool2d(kernel_size=4)
+        self.flow_1x1_atten_conv = nn.Conv2d(in_channels=128, out_channels=1, kernel_size=1)
+        self.mask_1x1_atten_conv = nn.Conv2d(in_channels=128, out_channels=1, kernel_size=1)
+        self.flow_sigmoid_gate = nn.Sigmoid()
+        self.mask_sigmoid_gate = nn.Sigmoid()
 
     def forward(self, inputs, mode="train"):
         '''
@@ -432,13 +448,28 @@ class VUnet(nn.Module):
         2. test stage, use the mean of the posterior as sampled z
         '''
         # posterior
-        x_f_in = torch.cat((inputs['appearance'], inputs['motion']), dim=1)
+        x_f_in = torch.cat((inputs['appearance'], inputs['motion'], inputs['mask']), dim=1)
         x_f = self.f_phi(x_f_in)
         # params and samples of the posterior
         q_means, zs = self.zc(x_f)
 
         # encoding features of flows
-        x_e = self.e_theta(inputs['motion'])
+        flow_x_e = self.e_theta_flow(inputs['motion'])
+        mask_x_e = self.e_theta_mask(inputs['mask'])
+
+        x_e = {}
+        flow_pool = self.flow_global_avgpooling(flow_x_e["s4_2"])
+        mask_pool = self.mask_global_avgpooling(mask_x_e["s4_2"]) 
+        # print("flow_pool", flow_pool.shape)
+        # print("mask_pool", mask_pool.shape)
+        flow_condi_gate = self.flow_sigmoid_gate(self.flow_1x1_atten_conv(flow_pool))
+        mask_condi_gate = self.mask_sigmoid_gate(self.mask_1x1_atten_conv(mask_pool))
+        # print("flow_condi_gate", flow_condi_gate.shape)
+        # print("mask_condi_gate", mask_condi_gate.shape)
+        x_e["s4_2"] = flow_condi_gate * flow_x_e["s4_2"] + mask_condi_gate * mask_x_e["s4_2"]
+        x_e["s4_1"] = flow_condi_gate * flow_x_e["s4_1"] + mask_condi_gate * mask_x_e["s4_1"]
+        x_e["s3_2"] = flow_condi_gate * flow_x_e["s3_2"] + mask_condi_gate * mask_x_e["s3_2"]
+        x_e["s3_1"] = flow_condi_gate * flow_x_e["s3_1"] + mask_condi_gate * mask_x_e["s3_1"]
 
         if mode == "train":
             out_b, p_means, ps = self.bottleneck(x_e, zs)  # h, p_params, z_prior
