@@ -6,7 +6,7 @@ model_paras:
   dropout_prob: 0.1
   img_channels: 3
   motion_channels: 2
-  mask_channels: 2
+  mask_channels: 1
   clip_hist: 4
   clip_pred: 1
   num_flows: 4
