@@ -10,6 +10,7 @@ model_paras:
   clip_hist: 4
   clip_pred: 1
   num_flows: 4
+  num_masks: 4
   # ML-MemAE-SC
   feature_root: 32
   num_slots: 2000
