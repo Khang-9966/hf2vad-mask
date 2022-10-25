@@ -480,4 +480,4 @@ class VUnet(nn.Module):
         out_img = self.decoder(out_b, x_f)
 
         self.saved_tensors = dict(q_means=q_means, p_means=p_means)
-        return out_img
+        return out_img,flow_condi_gate.mean(),mask_condi_gate.mean()
