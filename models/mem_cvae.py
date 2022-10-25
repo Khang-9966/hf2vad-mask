@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from models.vunet import VUnet
 from models.ml_memAE_sc import ML_MemAE_SC
-
+from torch.nn import ModuleDict, ModuleList
 
 class HFVAD(nn.Module):
     """
@@ -26,7 +26,7 @@ class HFVAD(nn.Module):
         self.mask_y_ch = 1  # num of optical flow channels
         self.flow_y_ch = 2  # num of optical flow channels
 
-        self.memAE = {}
+        self.memAE = ModuleDict()
         self.memAE["mask"] = ML_MemAE_SC(num_in_ch=self.mask_y_ch, seq_len=1, features_root=self.features_root,
                                  num_slots=self.num_slots, shrink_thres=self.shrink_thres,
                                  mem_usage=self.mem_usage,
@@ -99,7 +99,7 @@ class HFVAD(nn.Module):
         frame_pred = self.vunet(input_dict, mode=mode)
 
         out = dict(frame_pred=frame_pred, frame_target=frame_target,
-                   of_recon=flow_recon, of_target=sample_of, mask=mask_recon, mask_target=sample_mask)
+                   of_recon=flow_recon, of_target=sample_of, mask_recon=mask_recon, mask_target=sample_mask)
         out.update(self.vunet.saved_tensors)
 
         if self.finetune:
