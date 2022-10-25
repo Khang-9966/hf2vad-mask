@@ -203,6 +203,8 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
     score_func = nn.MSELoss(reduction="none")
     training_chunk_samples_files = sorted(os.listdir(training_chunked_samples_dir))
 
+    flow_condi_gate_list = []
+    mask_condi_gate_list = []
     of_training_stats = []
     mask_training_stats = []
     frame_training_stats = []
@@ -227,6 +229,9 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
                 loss_frame = score_func(out["frame_pred"], out["frame_target"]).cpu().data.numpy()
                 flow_loss = score_func(out["of_recon"], out["of_target"]).cpu().data.numpy()
                 mask_loss = score_func(out["mask_recon"], out["mask_target"]).cpu().data.numpy()
+                
+                flow_condi_gate_list.append(out["flow_condi_gate"].cpu().numpy())
+                mask_condi_gate_list.append(out["mask_condi_gate"].cpu().numpy())
 
                 of_scores = np.sum(np.sum(np.sum(flow_loss, axis=3), axis=2), axis=1)
                 mask_scores = np.sum(np.sum(np.sum(mask_loss, axis=3), axis=2), axis=1)
@@ -239,6 +244,8 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
             gc.collect()
 
     print("=========Forward pass for training stats done!==========")
+    print("Train flow_condi_gate_mean: ", np.array(flow_condi_gate_list).mean())
+    print("Train mask_condi_gate_mean: ", np.array(mask_condi_gate_list).mean())
     of_training_stats = np.concatenate(of_training_stats, axis=0)
     mask_training_stats = np.concatenate(mask_training_stats, axis=0)
     frame_training_stats = np.concatenate(frame_training_stats, axis=0)
@@ -302,6 +309,7 @@ def cal_training_stats_ssim(config, ckpt_path, training_chunked_samples_dir, sta
             gc.collect()
 
     print("=========Forward pass for training stats done!==========")
+
     of_training_stats = np.concatenate(of_training_stats, axis=0)
     frame_training_stats = np.concatenate(frame_training_stats, axis=0)
 
