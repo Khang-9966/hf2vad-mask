@@ -226,7 +226,7 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
 
                 loss_frame = score_func(out["frame_pred"], out["frame_target"]).cpu().data.numpy()
                 flow_loss = score_func(out["of_recon"], out["of_target"]).cpu().data.numpy()
-                mask_loss = score_func(out["maks_recon"], out["mask_target"]).cpu().data.numpy()
+                mask_loss = score_func(out["mask_recon"], out["mask_target"]).cpu().data.numpy()
 
                 of_scores = np.sum(np.sum(np.sum(flow_loss, axis=3), axis=2), axis=1)
                 mask_scores = np.sum(np.sum(np.sum(mask_loss, axis=3), axis=2), axis=1)
