@@ -125,16 +125,29 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                                           return_fig=True),
                                       global_step=step + 1)
 
-                    writer.add_figure("img/train_of_target",
+                    writer.add_figure("img/train_mask_target",
                                       visualize_sequences(img_batch_tensor2numpy(
                                           sample_masks.cpu()[:num_vis, :, :, :]),
                                           seq_len=sample_masks.size(1) ,
                                           return_fig=True),
                                       global_step=step + 1)
+                    writer.add_figure("img/train_mask_recon",
+                                      visualize_sequences(img_batch_tensor2numpy(
+                                          out["mask_recon"].detach().cpu()[:num_vis, :, :, :]),
+                                          seq_len=sample_masks.size(1) ,
+                                          return_fig=True),
+                                      global_step=step + 1)
+
+                    writer.add_figure("img/train_of_target",
+                                      visualize_sequences(img_batch_tensor2numpy(
+                                          sample_ofs.cpu()[:num_vis, :, :, :]),
+                                          seq_len=sample_ofs.size(1) //2,
+                                          return_fig=True),
+                                      global_step=step + 1)
                     writer.add_figure("img/train_of_recon",
                                       visualize_sequences(img_batch_tensor2numpy(
                                           out["of_recon"].detach().cpu()[:num_vis, :, :, :]),
-                                          seq_len=sample_masks.size(1) ,
+                                          seq_len=sample_ofs.size(1) //2,
                                           return_fig=True),
                                       global_step=step + 1)
 
@@ -191,6 +204,7 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
     training_chunk_samples_files = sorted(os.listdir(training_chunked_samples_dir))
 
     of_training_stats = []
+    mask_training_stats = []
     frame_training_stats = []
 
     print("=========Forward pass for training stats ==========")
@@ -203,29 +217,34 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
             for idx, data in tqdm(enumerate(dataloader),
                                   desc="Training stats calculating, Chunked File %02d" % chunk_file_idx,
                                   total=len(dataloader)):
-                sample_frames, _,sample_masks, _, _, _ = data
+                sample_frames, sample_ofs, sample_masks, _, _, _ = data
                 sample_frames = sample_frames.to(device)
                 sample_masks = sample_masks.to(device)
+                sample_ofs = sample_ofs.to(device)
 
-                out = model(sample_frames, sample_masks, mode="test")
+                out = model(sample_frames, sample_masks, sample_ofs, mode="test")
 
                 loss_frame = score_func(out["frame_pred"], out["frame_target"]).cpu().data.numpy()
-                loss_of = score_func(out["of_recon"], out["of_target"]).cpu().data.numpy()
+                flow_loss = score_func(out["of_recon"], out["of_target"]).cpu().data.numpy()
+                mask_loss = score_func(out["maks_recon"], out["mask_target"]).cpu().data.numpy()
 
-                of_scores = np.sum(np.sum(np.sum(loss_of, axis=3), axis=2), axis=1)
+                of_scores = np.sum(np.sum(np.sum(flow_loss, axis=3), axis=2), axis=1)
+                mask_scores = np.sum(np.sum(np.sum(mask_loss, axis=3), axis=2), axis=1)
                 frame_scores = np.sum(np.sum(np.sum(loss_frame, axis=3), axis=2), axis=1)
 
                 of_training_stats.append(of_scores)
+                mask_training_stats.append(mask_scores)
                 frame_training_stats.append(frame_scores)
             del dataset
             gc.collect()
 
     print("=========Forward pass for training stats done!==========")
     of_training_stats = np.concatenate(of_training_stats, axis=0)
+    mask_training_stats = np.concatenate(mask_training_stats, axis=0)
     frame_training_stats = np.concatenate(frame_training_stats, axis=0)
 
     training_stats = dict(of_training_stats=of_training_stats,
-                          frame_training_stats=frame_training_stats)
+                          frame_training_stats=frame_training_stats, mask_training_stats=mask_training_stats)
     # save to file
     torch.save(training_stats, stats_save_path)
 
