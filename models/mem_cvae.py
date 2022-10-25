@@ -96,10 +96,11 @@ class HFVAD(nn.Module):
         frame_target = sample_frame[:, -self.x_ch * self.num_pred:, :, :]
 
         input_dict = dict(appearance=frame_in, motion=flow_recon, mask=mask_recon)
-        frame_pred = self.vunet(input_dict, mode=mode)
+        frame_pred,flow_condi_gate,mask_condi_gate = self.vunet(input_dict, mode=mode)
 
         out = dict(frame_pred=frame_pred, frame_target=frame_target,
-                   of_recon=flow_recon, of_target=sample_of, mask_recon=mask_recon, mask_target=sample_mask)
+                   of_recon=flow_recon, of_target=sample_of, mask_recon=mask_recon, mask_target=sample_mask,
+                   flow_condi_gate=flow_condi_gate,mask_condi_gate=mask_condi_gate)
         out.update(self.vunet.saved_tensors)
 
         if self.finetune:
