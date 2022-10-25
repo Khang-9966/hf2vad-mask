@@ -86,6 +86,8 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
 
     # bbox anomaly scores for each frame
 
+    flow_condi_gate_list = []
+    mask_condi_gate_list = []
     of_scores_list = []
     mask_scores_list = []
     frame_scores_list = []
@@ -113,19 +115,24 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
             mask_scores = (mask_scores - mask_mean) / mask_std
             frame_scores = (frame_scores - frame_mean) / frame_std
 
+        flow_condi_gate_list.append(out_test["flow_condi_gate"].cpu().numpy())
+        mask_condi_gate_list.append(out_test["mask_condi_gate"].cpu().numpy())
         of_scores_list.append(of_scores)
         mask_scores_list.append(mask_scores)
         frame_scores_list.append(frame_scores)
         pred_frame_test_list.append(pred_frame_test)
+
+    print("Test flow_condi_gate_mean: ", np.array(flow_condi_gate_list).mean())
+    print("Test mask_condi_gate_mean: ", np.array(mask_condi_gate_list).mean())
 
     del dataset_test
     best_auc = 0
     best_w_r_of = 0
     best_w_r_mask = 0
     best_w_p = 0
-    for w_r_of_ in  np.arange(0,1.5,0.05):
-      for w_r_mask_ in np.arange(0,1.5,0.05):
-        for w_p_ in np.arange(0,1.5,0.05):
+    for w_r_of_ in  np.arange(0,1.0,0.1):
+      for w_r_mask_ in np.arange(0,0.5,0.1):
+        for w_p_ in np.arange(0,0.5,0.1):
             frame_bbox_scores = [{} for i in range(testset_num_frames.item())]
             for batch_index in range(len(frame_scores_list)):
               of_scores = of_scores_list[batch_index]
