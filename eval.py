@@ -74,6 +74,8 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
 
         of_mean, of_std = np.mean(training_scores_stats["of_training_stats"]), \
                           np.std(training_scores_stats["of_training_stats"])
+        mask_mean, mask_std = np.mean(training_scores_stats["mask_training_stats"]), \
+                          np.std(training_scores_stats["mask_training_stats"])
         frame_mean, frame_std = np.mean(training_scores_stats["frame_training_stats"]), \
                                 np.std(training_scores_stats["frame_training_stats"])
 
@@ -85,219 +87,112 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
     # bbox anomaly scores for each frame
 
     of_scores_list = []
+    mask_scores_list = []
     frame_scores_list = []
     pred_frame_test_list = []
     for test_data in tqdm(dataloader_test, desc="Eval: ", total=len(dataloader_test)):
 
-        sample_frames_test, _, sample_masks_test, bbox_test, pred_frame_test, indices_test = test_data
+        sample_frames_test, sample_ofs_test, sample_masks_test, bbox_test, pred_frame_test, indices_test = test_data
         sample_frames_test = sample_frames_test.to(device)
         sample_masks_test = sample_masks_test.to(device)
+        sample_ofs_test = sample_ofs_test.to(device)
 
-        out_test = model(sample_frames_test, sample_masks_test, mode="test")
+        out_test = model(sample_frames_test, sample_masks_test, sample_ofs_test, mode="test")
 
         loss_of_test = score_func(out_test["of_recon"], out_test["of_target"]).cpu().data.numpy()
+        loss_mask_test = score_func(out_test["mask_recon"], out_test["mask_target"]).cpu().data.numpy()
         loss_frame_test = score_func(out_test["frame_pred"], out_test["frame_target"]).cpu().data.numpy()
 
         of_scores = np.sum(np.sum(np.sum(loss_of_test, axis=3), axis=2), axis=1)
+        mask_scores = np.sum(np.sum(np.sum(loss_mask_test, axis=3), axis=2), axis=1)
         frame_scores = np.sum(np.sum(np.sum(loss_frame_test, axis=3), axis=2), axis=1)
 
         if training_stats_path is not None:
             # mean-std normalization
             of_scores = (of_scores - of_mean) / of_std
+            mask_scores = (mask_scores - mask_mean) / mask_std
             frame_scores = (frame_scores - frame_mean) / frame_std
 
         of_scores_list.append(of_scores)
+        mask_scores_list.append(mask_scores)
         frame_scores_list.append(frame_scores)
         pred_frame_test_list.append(pred_frame_test)
 
     del dataset_test
     best_auc = 0
-    best_w_r = 0
+    best_w_r_of = 0
+    best_w_r_mask = 0
     best_w_p = 0
-    for w_r_ in  np.arange(0,0.2,0.05):
-      for w_p_ in np.arange(0,1.5,0.05):
-        frame_bbox_scores = [{} for i in range(testset_num_frames.item())]
-        for batch_index in range(len(frame_scores_list)):
-          of_scores = of_scores_list[batch_index]
-          frame_scores = frame_scores_list[batch_index]
-          pred_frame_test = pred_frame_test_list[batch_index]
-          scores = w_r_ * of_scores + w_p_ * frame_scores
+    for w_r_of_ in  np.arange(0,1.5,0.05):
+      for w_r_mask_ in np.arange(0,1.5,0.05):
+        for w_p_ in np.arange(0,1.5,0.05):
+            frame_bbox_scores = [{} for i in range(testset_num_frames.item())]
+            for batch_index in range(len(frame_scores_list)):
+              of_scores = of_scores_list[batch_index]
+              frame_scores = frame_scores_list[batch_index]
+              mask_scores = mask_scores_list[batch_index]
 
-          for i in range(len(scores)):
-              frame_bbox_scores[pred_frame_test[i][-1].item()][i] = scores[i]
+              pred_frame_test = pred_frame_test_list[batch_index]
+              scores = w_r_of_ * of_scores + w_p_ * frame_scores + w_r_mask_ * mask_scores
+
+              for i in range(len(scores)):
+                  frame_bbox_scores[pred_frame_test[i][-1].item()][i] = scores[i]
 
 
-        # frame-level anomaly score
-        frame_scores = np.empty(len(frame_bbox_scores))
-        for i in range(len(frame_scores)):
-            if len(frame_bbox_scores[i].items()) == 0:
-                frame_scores[i] = w_r_ * (0 - of_mean) / of_std + w_p_ * (0 - frame_mean) / frame_std
-            else:
-                frame_scores[i] = np.max(list(frame_bbox_scores[i].values()))
+            # frame-level anomaly score
+            frame_scores = np.empty(len(frame_bbox_scores))
+            for i in range(len(frame_scores)):
+                if len(frame_bbox_scores[i].items()) == 0:
+                    frame_scores[i] = w_r_of_ * (0 - of_mean) / of_std + w_p_ * (0 - frame_mean) / frame_std + w_r_mask_ * (0 - mask_mean) / mask_std
+                else:
+                    frame_scores[i] = np.max(list(frame_bbox_scores[i].values()))
 
-        joblib.dump(frame_scores,
-                    os.path.join(config["eval_root"], config["exp_name"], "frame_scores_%s.json" % suffix))
+            joblib.dump(frame_scores,
+                        os.path.join(config["eval_root"], config["exp_name"], "frame_scores_%s.json" % suffix))
 
-        # frame_scores = joblib.load(
-        #     os.path.join(config["eval_root"], config["exp_name"], "frame_scores_%s.json" % suffix)
-        # )
+            # frame_scores = joblib.load(
+            #     os.path.join(config["eval_root"], config["exp_name"], "frame_scores_%s.json" % suffix)
+            # )
 
-        # ================== Calculate AUC ==============================
-        # load gt labels
-        gt = pickle.load(
-            open(os.path.join(config["dataset_base_dir"], "%s/ground_truth_demo/gt_label.json" % dataset_name), "rb"))
-        gt_concat = np.concatenate(list(gt.values()), axis=0)
+            # ================== Calculate AUC ==============================
+            # load gt labels
+            gt = pickle.load(
+                open(os.path.join(config["dataset_base_dir"], "%s/ground_truth_demo/gt_label.json" % dataset_name), "rb"))
+            gt_concat = np.concatenate(list(gt.values()), axis=0)
 
-        new_gt = np.array([])
-        new_frame_scores = np.array([])
+            new_gt = np.array([])
+            new_frame_scores = np.array([])
 
-        start_idx = 0
-        for cur_video_id in range(METADATA[dataset_name]["testing_video_num"]):
-            gt_each_video = gt_concat[start_idx:start_idx + METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]][4:]
-            scores_each_video = frame_scores[
-                                start_idx:start_idx + METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]][4:]
+            start_idx = 0
+            for cur_video_id in range(METADATA[dataset_name]["testing_video_num"]):
+                gt_each_video = gt_concat[start_idx:start_idx + METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]][4:]
+                scores_each_video = frame_scores[
+                                    start_idx:start_idx + METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]][4:]
 
-            start_idx += METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]
+                start_idx += METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]
 
-            new_gt = np.concatenate((new_gt, gt_each_video), axis=0)
-            new_frame_scores = np.concatenate((new_frame_scores, scores_each_video), axis=0)
+                new_gt = np.concatenate((new_gt, gt_each_video), axis=0)
+                new_frame_scores = np.concatenate((new_frame_scores, scores_each_video), axis=0)
 
-        gt_concat = new_gt
-        frame_scores = new_frame_scores
+            gt_concat = new_gt
+            frame_scores = new_frame_scores
 
-        auc = evaluation(frame_scores, gt_concat,
-                                 np.array(METADATA[dataset_name]["testing_frames_cnt"]) - 4)
+            auc = evaluation(frame_scores, gt_concat,
+                                     np.array(METADATA[dataset_name]["testing_frames_cnt"]) - 4)
 
-        if auc >= best_auc:
-          best_auc = auc
-          best_frame_scores = frame_scores
-          best_w_r = w_r_
-          best_w_p = w_p_
-          print(w_r_,w_p_,best_auc)
+            if auc >= best_auc:
+              best_auc = auc
+              best_frame_scores = frame_scores
+              best_w_r_of = w_r_of_
+              best_w_r_mask = w_r_mask_
+              best_w_p = w_p_
+              print(best_w_r_of,best_w_r_mask,best_w_p,best_auc)
 
-    curves_save_path = os.path.join(config["eval_root"], config["exp_name"], 'anomaly_curves_%s' % suffix)
+    curves_save_path = os.path.join(config["eval_root"], config["exp_name"], 'anomaly_curves_%s_ssim_mse' % suffix)
     auc = save_evaluation_curves(best_frame_scores, gt_concat, curves_save_path,
                                  np.array(METADATA[dataset_name]["testing_frames_cnt"]) - 4)
 
     return auc
-
-# def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_path, suffix):
-#     dataset_name = config["dataset_name"]
-#     dataset_base_dir = config["dataset_base_dir"]
-#     device = config["device"]
-#     num_workers = config["num_workers"]
-
-#     testset_num_frames = np.sum(METADATA[dataset_name]["testing_frames_cnt"])
-
-#     eval_dir = os.path.join(config["eval_root"], config["exp_name"])
-#     if not os.path.exists(eval_dir):
-#         os.makedirs(eval_dir)
-
-#     model = HFVAD(num_hist=config["model_paras"]["clip_hist"],
-#                   num_pred=config["model_paras"]["clip_pred"],
-#                   config=config,
-#                   features_root=config["model_paras"]["feature_root"],
-#                   num_slots=config["model_paras"]["num_slots"],
-#                   shrink_thres=config["model_paras"]["shrink_thres"],
-#                   mem_usage=config["model_paras"]["mem_usage"],
-#                   skip_ops=config["model_paras"]["skip_ops"],
-#                   ).to(device).eval()
-
-#     model_weights = torch.load(ckpt_path)["model_state_dict"]
-#     model.load_state_dict(model_weights)
-#     # print("load pre-trained success!")
-
-#     #  get training stats
-#     if training_stats_path is not None:
-#         training_scores_stats = torch.load(training_stats_path)
-
-#         of_mean, of_std = np.mean(training_scores_stats["of_training_stats"]), \
-#                           np.std(training_scores_stats["of_training_stats"])
-#         frame_mean, frame_std = np.mean(training_scores_stats["frame_training_stats"]), \
-#                                 np.std(training_scores_stats["frame_training_stats"])
-
-#     score_func = nn.MSELoss(reduction="none")
-
-#     dataset_test = Chunked_sample_dataset(testing_chunked_samples_file)
-#     dataloader_test = DataLoader(dataset=dataset_test, batch_size=128, num_workers=num_workers, shuffle=False)
-
-#     # bbox anomaly scores for each frame
-#     frame_bbox_scores = [{} for i in range(testset_num_frames.item())]
-#     for test_data in tqdm(dataloader_test, desc="Eval: ", total=len(dataloader_test)):
-
-#         sample_frames_test, sample_ofs_test, bbox_test, pred_frame_test, indices_test = test_data
-#         sample_frames_test = sample_frames_test.to(device)
-#         sample_ofs_test = sample_ofs_test.to(device)
-
-#         out_test = model(sample_frames_test, sample_ofs_test, mode="test")
-
-#         loss_of_test = score_func(out_test["of_recon"], out_test["of_target"]).cpu().data.numpy()
-#         loss_frame_test = score_func(out_test["frame_pred"], out_test["frame_target"]).cpu().data.numpy()
-
-#         of_scores = np.sum(np.sum(np.sum(loss_of_test, axis=3), axis=2), axis=1)
-#         frame_scores = np.sum(np.sum(np.sum(loss_frame_test, axis=3), axis=2), axis=1)
-
-#         if training_stats_path is not None:
-#             # mean-std normalization
-#             of_scores = (of_scores - of_mean) / of_std
-#             frame_scores = (frame_scores - frame_mean) / frame_std
-
-#         scores = config["w_r"] * of_scores + config["w_p"] * frame_scores
-
-#         for i in range(len(scores)):
-#             frame_bbox_scores[pred_frame_test[i][-1].item()][i] = scores[i]
-
-#     del dataset_test
-
-#     # joblib.dump(frame_bbox_scores,
-#     #             os.path.join(config["eval_root"], config["exp_name"], "frame_bbox_scores_%s.json" % suffix))
-
-#     # frame_bbox_scores = joblib.load(os.path.join(config["eval_root"], config["exp_name"],
-#     #                                              "frame_bbox_scores_%s.json" % suffix))
-
-#     # frame-level anomaly score
-#     frame_scores = np.empty(len(frame_bbox_scores))
-#     for i in range(len(frame_scores)):
-#         if len(frame_bbox_scores[i].items()) == 0:
-#             frame_scores[i] = config["w_r"] * (0 - of_mean) / of_std + config["w_p"] * (0 - frame_mean) / frame_std
-#         else:
-#             frame_scores[i] = np.max(list(frame_bbox_scores[i].values()))
-
-#     joblib.dump(frame_scores,
-#                 os.path.join(config["eval_root"], config["exp_name"], "frame_scores_%s.json" % suffix))
-
-#     # frame_scores = joblib.load(
-#     #     os.path.join(config["eval_root"], config["exp_name"], "frame_scores_%s.json" % suffix)
-#     # )
-
-#     # ================== Calculate AUC ==============================
-#     # load gt labels
-#     gt = pickle.load(
-#         open(os.path.join(config["dataset_base_dir"], "%s/ground_truth_demo/gt_label.json" % dataset_name), "rb"))
-#     gt_concat = np.concatenate(list(gt.values()), axis=0)
-
-#     new_gt = np.array([])
-#     new_frame_scores = np.array([])
-
-#     start_idx = 0
-#     for cur_video_id in range(METADATA[dataset_name]["testing_video_num"]):
-#         gt_each_video = gt_concat[start_idx:start_idx + METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]][4:]
-#         scores_each_video = frame_scores[
-#                             start_idx:start_idx + METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]][4:]
-
-#         start_idx += METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]
-
-#         new_gt = np.concatenate((new_gt, gt_each_video), axis=0)
-#         new_frame_scores = np.concatenate((new_frame_scores, scores_each_video), axis=0)
-
-#     gt_concat = new_gt
-#     frame_scores = new_frame_scores
-
-#     curves_save_path = os.path.join(config["eval_root"], config["exp_name"], 'anomaly_curves_%s' % suffix)
-#     auc = save_evaluation_curves(frame_scores, gt_concat, curves_save_path,
-#                                  np.array(METADATA[dataset_name]["testing_frames_cnt"]) - 4)
-
-#     return auc
 
 
 if __name__ == '__main__':
