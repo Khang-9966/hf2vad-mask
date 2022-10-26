@@ -9,6 +9,7 @@ import numpy as np
 import yaml
 import shutil
 from eval import evaluate
+from eval_ssim_mse import evaluate as ssim_evaluate
 from tqdm import tqdm
 
 from losses.loss import Gradient_Loss, Intensity_Loss, aggregate_kl_loss
@@ -172,7 +173,12 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                                testing_chunked_samples_file,
                                stats_save_path,
                                suffix=str(epoch + 1))
-                
+                ssim_auc = ssim_evaluate(config, model_save_path + "-%d" % (epoch + 1),
+                               testing_chunked_samples_file,
+                               stats_save_path,
+                               suffix=str(epoch + 1))
+                auc = ssim_auc if ssim_auc > auc else auc
+
                 if auc > best_auc:
                     best_auc = auc
                     only_model_saver(model.state_dict(), os.path.join(paths["ckpt_dir"], "best.pth"))
