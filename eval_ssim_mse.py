@@ -146,7 +146,7 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
 
     for w_r_of_ in  np.arange(0,1.0,0.1):
       for w_r_mask_ in np.arange(0,1.0,0.1):
-        for w_p_ in np.arange(0,1.0,0.1):
+        for w_p_ in np.arange(0,0.1,0.1):
             for w_p_ssim_ in np.arange(0,1.0,0.1):
                 frame_bbox_scores = [{} for i in range(testset_num_frames.item())]
                 for batch_index in range(len(frame_scores_list)):
