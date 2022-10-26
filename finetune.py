@@ -78,12 +78,15 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                 sample_frames, sample_ofs, sample_masks, _, _, _ = train_data
                 sample_masks = sample_masks.to(device)
                 sample_frames = sample_frames.to(device)
+                sample_ofs = sample_ofs.to(device)
 
-                out = model(sample_frames, sample_masks, mode="train")
+                out = model(sample_frames, sample_masks, sample_ofs, mode="train")
 
                 # loss of ML-MemAE-SC
-                loss_sparsity = out["loss_sparsity"]
-                loss_flow_recon = out["loss_recon"]
+                flow_loss_sparsity = out["flow_loss_sparsity"]
+                mask_loss_sparsity = out["mask_loss_sparsity"]
+                loss_flow_recon = out["flow_loss_recon"]
+                loss_mask_recon = out["mask_loss_recon"]
                 # loss of CVAE
                 loss_kl = aggregate_kl_loss(out["q_means"], out["p_means"])
                 loss_frame = intensity_loss(out["frame_pred"], out["frame_target"])
@@ -92,8 +95,8 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                 loss_all = config["lam_kl"] * loss_kl + \
                            config["lam_frame"] * loss_frame + \
                            config["lam_grad"] * loss_grad + \
-                           config["lam_sparse"] * loss_sparsity + \
-                           config["lam_recon"] * loss_flow_recon
+                           config["lam_sparse"] * flow_loss_sparsity + config["lam_sparse"] * mask_loss_sparsity \
+                           config["lam_recon"] * loss_flow_recon + config["lam_recon"] * loss_mask_recon  
 
                 optimizer.zero_grad()
                 loss_all.backward()
@@ -106,8 +109,10 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                     writer.add_scalar('loss_frame/train', loss_frame, global_step=step + 1)
                     writer.add_scalar('loss_kl/train', loss_kl, global_step=step + 1)
                     writer.add_scalar('loss_grad/train', loss_grad, global_step=step + 1)
-                    writer.add_scalar('loss_sparsity/train', loss_sparsity, global_step=step + 1)
+                    writer.add_scalar('flow_loss_sparsity/train', flow_loss_sparsity, global_step=step + 1)
                     writer.add_scalar('loss_flow_recon/train', loss_flow_recon, global_step=step + 1)
+                    writer.add_scalar('mask_loss_sparsity/train', mask_loss_sparsity, global_step=step + 1)
+                    writer.add_scalar('loss_mask_recon/train', loss_mask_recon, global_step=step + 1)
 
                     num_vis = 6
                     writer.add_figure("img/train_sample_frames",
@@ -123,16 +128,29 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                                           return_fig=True),
                                       global_step=step + 1)
                     # memAE输入的光流和重建的光流
-                    writer.add_figure("img/train_of_target",
+                    writer.add_figure("img/train_mask_target",
                                       visualize_sequences(img_batch_tensor2numpy(
                                           sample_masks.cpu()[:num_vis, :, :, :]),
                                           seq_len=sample_masks.size(1) ,
                                           return_fig=True),
                                       global_step=step + 1)
+                    writer.add_figure("img/train_mask_recon",
+                                      visualize_sequences(img_batch_tensor2numpy(
+                                          out["mask_recon"].detach().cpu()[:num_vis, :, :, :]),
+                                          seq_len=sample_masks.size(1) ,
+                                          return_fig=True),
+                                      global_step=step + 1)
+
+                    writer.add_figure("img/train_of_target",
+                                      visualize_sequences(img_batch_tensor2numpy(
+                                          sample_ofs.cpu()[:num_vis, :, :, :]),
+                                          seq_len=sample_ofs.size(1) //2,
+                                          return_fig=True),
+                                      global_step=step + 1)
                     writer.add_figure("img/train_of_recon",
                                       visualize_sequences(img_batch_tensor2numpy(
                                           out["of_recon"].detach().cpu()[:num_vis, :, :, :]),
-                                          seq_len=sample_masks.size(1) ,
+                                          seq_len=sample_ofs.size(1) //2,
                                           return_fig=True),
                                       global_step=step + 1)
 
@@ -175,16 +193,20 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
                   shrink_thres=config["model_paras"]["shrink_thres"],
                   skip_ops=config["model_paras"]["skip_ops"],
                   mem_usage=config["model_paras"]["mem_usage"],
-                  ).to(device).eval()
+                  ).to(config["device"]).eval()
 
+    # load weights
     model_weights = torch.load(ckpt_path)["model_state_dict"]
     model.load_state_dict(model_weights)
-    print("load pre-trained success!")
+    # print("load pre-trained success!")
 
     score_func = nn.MSELoss(reduction="none")
     training_chunk_samples_files = sorted(os.listdir(training_chunked_samples_dir))
 
+    flow_condi_gate_list = []
+    mask_condi_gate_list = []
     of_training_stats = []
+    mask_training_stats = []
     frame_training_stats = []
 
     print("=========Forward pass for training stats ==========")
@@ -197,29 +219,39 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
             for idx, data in tqdm(enumerate(dataloader),
                                   desc="Training stats calculating, Chunked File %02d" % chunk_file_idx,
                                   total=len(dataloader)):
-                sample_frames, _, sample_masks, _, _, _ = data
+                sample_frames, sample_ofs, sample_masks, _, _, _ = data
                 sample_frames = sample_frames.to(device)
                 sample_masks = sample_masks.to(device)
+                sample_ofs = sample_ofs.to(device)
 
-                out = model(sample_frames, sample_masks, mode="test")
+                out = model(sample_frames, sample_masks, sample_ofs, mode="test")
 
                 loss_frame = score_func(out["frame_pred"], out["frame_target"]).cpu().data.numpy()
-                loss_of = score_func(out["of_recon"], out["of_target"]).cpu().data.numpy()
+                flow_loss = score_func(out["of_recon"], out["of_target"]).cpu().data.numpy()
+                mask_loss = score_func(out["mask_recon"], out["mask_target"]).cpu().data.numpy()
+                
+                flow_condi_gate_list.append(out["flow_condi_gate"].cpu().numpy())
+                mask_condi_gate_list.append(out["mask_condi_gate"].cpu().numpy())
 
-                of_scores = np.sum(np.sum(np.sum(loss_of, axis=3), axis=2), axis=1)
+                of_scores = np.sum(np.sum(np.sum(flow_loss, axis=3), axis=2), axis=1)
+                mask_scores = np.sum(np.sum(np.sum(mask_loss, axis=3), axis=2), axis=1)
                 frame_scores = np.sum(np.sum(np.sum(loss_frame, axis=3), axis=2), axis=1)
 
                 of_training_stats.append(of_scores)
+                mask_training_stats.append(mask_scores)
                 frame_training_stats.append(frame_scores)
             del dataset
             gc.collect()
 
     print("=========Forward pass for training stats done!==========")
+    print("Train flow_condi_gate_mean: ", np.array(flow_condi_gate_list).mean())
+    print("Train mask_condi_gate_mean: ", np.array(mask_condi_gate_list).mean())
     of_training_stats = np.concatenate(of_training_stats, axis=0)
+    mask_training_stats = np.concatenate(mask_training_stats, axis=0)
     frame_training_stats = np.concatenate(frame_training_stats, axis=0)
 
     training_stats = dict(of_training_stats=of_training_stats,
-                          frame_training_stats=frame_training_stats)
+                          frame_training_stats=frame_training_stats, mask_training_stats=mask_training_stats)
     # save to file
     torch.save(training_stats, stats_save_path)
 
