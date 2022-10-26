@@ -195,7 +195,7 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
               best_w_p = w_p_
               print(best_w_r_of,best_w_r_mask,best_w_p,best_auc)
 
-    curves_save_path = os.path.join(config["eval_root"], config["exp_name"], 'anomaly_curves_%s_ssim_mse' % suffix)
+    curves_save_path = os.path.join(config["eval_root"], config["exp_name"], 'anomaly_curves_%s' % suffix)
     auc = save_evaluation_curves(best_frame_scores, gt_concat, curves_save_path,
                                  np.array(METADATA[dataset_name]["testing_frames_cnt"]) - 4)
 
