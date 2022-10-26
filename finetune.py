@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from torch import optim
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
+from eval_ssim_mse import evaluate as ssim_evaluate
 
 from losses.loss import Gradient_Loss, Intensity_Loss, aggregate_kl_loss
 from datasets.dataset import Chunked_sample_dataset, img_batch_tensor2numpy
@@ -95,7 +96,7 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                 loss_all = config["lam_kl"] * loss_kl + \
                            config["lam_frame"] * loss_frame + \
                            config["lam_grad"] * loss_grad + \
-                           config["lam_sparse"] * flow_loss_sparsity + config["lam_sparse"] * mask_loss_sparsity \
+                           config["lam_sparse"] * flow_loss_sparsity + config["lam_sparse"] * mask_loss_sparsity + \
                            config["lam_recon"] * loss_flow_recon + config["lam_recon"] * loss_mask_recon  
 
                 optimizer.zero_grad()
@@ -175,7 +176,12 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                                testing_chunked_samples_file,
                                stats_save_path,
                                suffix=str(epoch + 1))
-
+                ssim_auc = ssim_evaluate(config, model_save_path + "-%d" % (epoch + 1),
+                               testing_chunked_samples_file,
+                               stats_save_path,
+                               suffix=str(epoch + 1))
+                auc = ssim_auc if ssim_auc > auc else auc
+                
                 if auc > best_auc:
                     best_auc = auc
                     only_model_saver(model.state_dict(), os.path.join(paths["ckpt_dir"], "best.pth"))
