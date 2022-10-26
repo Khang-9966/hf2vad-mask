@@ -13,6 +13,7 @@ from models.mem_cvae import HFVAD
 from datasets.dataset import Chunked_sample_dataset
 from utils.eval_utils import save_evaluation_curves,evaluation
 from pytorch_msssim import  ms_ssim, SSIM, MS_SSIM
+
 METADATA = {
     "ped2": {
         "testing_video_num": 12,
@@ -74,120 +75,142 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
 
         of_mean, of_std = np.mean(training_scores_stats["of_training_stats"]), \
                           np.std(training_scores_stats["of_training_stats"])
+        mask_mean, mask_std = np.mean(training_scores_stats["mask_training_stats"]), \
+                          np.std(training_scores_stats["mask_training_stats"])
         frame_mean, frame_std = np.mean(training_scores_stats["frame_training_stats"]), \
                                 np.std(training_scores_stats["frame_training_stats"])
         ssim_frame_mean, ssim_frame_std = np.mean(training_scores_stats["ssim_frame_training_stats"]), \
                                 np.std(training_scores_stats["ssim_frame_training_stats"])
 
     score_func = nn.MSELoss(reduction="none")
-
+    torch_ssim = SSIM(data_range=1, size_average=False, channel=3 ,win_size=7)
+    
     dataset_test = Chunked_sample_dataset(testing_chunked_samples_file)
     dataloader_test = DataLoader(dataset=dataset_test, batch_size=128, num_workers=num_workers, shuffle=False)
 
     # bbox anomaly scores for each frame
-
+    
+    flow_condi_gate_list = []
+    mask_condi_gate_list = []
+    
     of_scores_list = []
+    mask_scores_list = []
     frame_scores_list = []
-    ssim_frame_scores_list = []
     pred_frame_test_list = []
-    torch_ssim = SSIM(data_range=1, size_average=False, channel=3 ,win_size=7)
-
+    ssim_frame_scores_list = []
+    
     for test_data in tqdm(dataloader_test, desc="Eval: ", total=len(dataloader_test)):
 
-        sample_frames_test, _, sample_masks_test, bbox_test, pred_frame_test, indices_test = test_data
+        sample_frames_test, sample_ofs_test, sample_masks_test, bbox_test, pred_frame_test, indices_test = test_data
         sample_frames_test = sample_frames_test.to(device)
         sample_masks_test = sample_masks_test.to(device)
+        sample_ofs_test = sample_ofs_test.to(device)
 
-        out_test = model(sample_frames_test, sample_masks_test, mode="test")
-        
-        
+        out_test = model(sample_frames_test, sample_masks_test, sample_ofs_test, mode="test")
+
         loss_of_test = score_func(out_test["of_recon"], out_test["of_target"]).cpu().data.numpy()
+        loss_mask_test = score_func(out_test["mask_recon"], out_test["mask_target"]).cpu().data.numpy()
         loss_frame_test = score_func(out_test["frame_pred"], out_test["frame_target"]).cpu().data.numpy()
         ssim_loss_frame_test = 1-torch_ssim(out_test["frame_pred"].cuda(), out_test["frame_target"].cuda()).cpu().data.numpy()
-
+        
+        
         of_scores = np.sum(np.sum(np.sum(loss_of_test, axis=3), axis=2), axis=1)
+        mask_scores = np.sum(np.sum(np.sum(loss_mask_test, axis=3), axis=2), axis=1)
         frame_scores = np.sum(np.sum(np.sum(loss_frame_test, axis=3), axis=2), axis=1)
         ssim_frame_scores = ssim_loss_frame_test
 
         if training_stats_path is not None:
             # mean-std normalization
             of_scores = (of_scores - of_mean) / of_std
-            ssim_frame_scores = (ssim_frame_scores - ssim_frame_mean) / ssim_frame_std
+            mask_scores = (mask_scores - mask_mean) / mask_std
             frame_scores = (frame_scores - frame_mean) / frame_std
+            ssim_frame_scores = (ssim_frame_scores - ssim_frame_mean) / ssim_frame_std
 
+        flow_condi_gate_list.append(out_test["flow_condi_gate"].cpu().numpy())
+        mask_condi_gate_list.append(out_test["mask_condi_gate"].cpu().numpy())
         of_scores_list.append(of_scores)
-        ssim_frame_scores_list.append(ssim_frame_scores)
-        pred_frame_test_list.append(pred_frame_test)
+        mask_scores_list.append(mask_scores)
         frame_scores_list.append(frame_scores)
+        pred_frame_test_list.append(pred_frame_test)
+        ssim_frame_scores_list.append(ssim_frame_scores)
+
+    print("Test flow_condi_gate_mean: ", np.array(flow_condi_gate_list).mean())
+    print("Test mask_condi_gate_mean: ", np.array(mask_condi_gate_list).mean())
 
     del dataset_test
     best_auc = 0
-    best_w_r = 0
+    best_w_r_of = 0
+    best_w_r_mask = 0
     best_w_p = 0
     best_w_p_ssim = 0
-    for w_r_ in  np.arange(0,1.5,0.05):
-      for w_p_ in np.arange(0,0.05,0.05):
-        for w_p_ssim_ in np.arange(0,1.5,0.05):
-            frame_bbox_scores = [{} for i in range(testset_num_frames.item())]
-            for batch_index in range(len(frame_scores_list)):
-              of_scores = of_scores_list[batch_index]
-              frame_scores = frame_scores_list[batch_index]
-              ssim_frame_scores = ssim_frame_scores_list[batch_index]
-              pred_frame_test = pred_frame_test_list[batch_index]
-              scores = w_r_ * of_scores + w_p_ * frame_scores + w_p_ssim_ * ssim_frame_scores
 
-              for i in range(len(scores)):
-                  frame_bbox_scores[pred_frame_test[i][-1].item()][i] = scores[i]
+    for w_r_of_ in  np.arange(0,1.0,0.1):
+      for w_r_mask_ in np.arange(0,1.0,0.1):
+        for w_p_ in np.arange(0,1.0,0.1):
+            for w_p_ssim_ in np.arange(0,1.0,0.1):
+                frame_bbox_scores = [{} for i in range(testset_num_frames.item())]
+                for batch_index in range(len(frame_scores_list)):
+                  of_scores = of_scores_list[batch_index]
+                  frame_scores = frame_scores_list[batch_index]
+                  mask_scores = mask_scores_list[batch_index]
+                  ssim_frame_scores = ssim_frame_scores_list[batch_index]
+
+                  pred_frame_test = pred_frame_test_list[batch_index]
+                  scores = w_r_of_ * of_scores + w_p_ * frame_scores + w_r_mask_ * mask_scores + w_p_ssim_ * ssim_frame_scores
+
+                  for i in range(len(scores)):
+                      frame_bbox_scores[pred_frame_test[i][-1].item()][i] = scores[i]
 
 
-            # frame-level anomaly score
-            frame_scores = np.empty(len(frame_bbox_scores))
-            for i in range(len(frame_scores)):
-                if len(frame_bbox_scores[i].items()) == 0:
-                    frame_scores[i] = w_r_ * (0 - of_mean) / of_std + w_p_ * (0 - frame_mean) / frame_std + w_p_ssim_ * (0 - ssim_frame_mean) / ssim_frame_std
-                else:
-                    frame_scores[i] = np.max(list(frame_bbox_scores[i].values()))
+                # frame-level anomaly score
+                frame_scores = np.empty(len(frame_bbox_scores))
+                for i in range(len(frame_scores)):
+                    if len(frame_bbox_scores[i].items()) == 0:
+                        frame_scores[i] = w_r_of_ * (0 - of_mean) / of_std + w_p_ * (0 - frame_mean) / frame_std + w_r_mask_ * (0 - mask_mean) / mask_std + w_p_ssim_ * (0 - ssim_frame_mean) / ssim_frame_std
+                    else:
+                        frame_scores[i] = np.max(list(frame_bbox_scores[i].values()))
 
-            joblib.dump(frame_scores,
-                        os.path.join(config["eval_root"], config["exp_name"], "frame_scores_%s.json" % suffix))
+                joblib.dump(frame_scores,
+                            os.path.join(config["eval_root"], config["exp_name"], "frame_scores_%s.json" % suffix))
 
-            # frame_scores = joblib.load(
-            #     os.path.join(config["eval_root"], config["exp_name"], "frame_scores_%s.json" % suffix)
-            # )
+                # frame_scores = joblib.load(
+                #     os.path.join(config["eval_root"], config["exp_name"], "frame_scores_%s.json" % suffix)
+                # )
 
-            # ================== Calculate AUC ==============================
-            # load gt labels
-            gt = pickle.load(
-                open(os.path.join(config["dataset_base_dir"], "%s/ground_truth_demo/gt_label.json" % dataset_name), "rb"))
-            gt_concat = np.concatenate(list(gt.values()), axis=0)
+                # ================== Calculate AUC ==============================
+                # load gt labels
+                gt = pickle.load(
+                    open(os.path.join(config["dataset_base_dir"], "%s/ground_truth_demo/gt_label.json" % dataset_name), "rb"))
+                gt_concat = np.concatenate(list(gt.values()), axis=0)
 
-            new_gt = np.array([])
-            new_frame_scores = np.array([])
+                new_gt = np.array([])
+                new_frame_scores = np.array([])
 
-            start_idx = 0
-            for cur_video_id in range(METADATA[dataset_name]["testing_video_num"]):
-                gt_each_video = gt_concat[start_idx:start_idx + METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]][4:]
-                scores_each_video = frame_scores[
-                                    start_idx:start_idx + METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]][4:]
+                start_idx = 0
+                for cur_video_id in range(METADATA[dataset_name]["testing_video_num"]):
+                    gt_each_video = gt_concat[start_idx:start_idx + METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]][4:]
+                    scores_each_video = frame_scores[
+                                        start_idx:start_idx + METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]][4:]
 
-                start_idx += METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]
+                    start_idx += METADATA[dataset_name]["testing_frames_cnt"][cur_video_id]
 
-                new_gt = np.concatenate((new_gt, gt_each_video), axis=0)
-                new_frame_scores = np.concatenate((new_frame_scores, scores_each_video), axis=0)
+                    new_gt = np.concatenate((new_gt, gt_each_video), axis=0)
+                    new_frame_scores = np.concatenate((new_frame_scores, scores_each_video), axis=0)
 
-            gt_concat = new_gt
-            frame_scores = new_frame_scores
+                gt_concat = new_gt
+                frame_scores = new_frame_scores
 
-            auc = evaluation(frame_scores, gt_concat,
-                                     np.array(METADATA[dataset_name]["testing_frames_cnt"]) - 4)
+                auc = evaluation(frame_scores, gt_concat,
+                                         np.array(METADATA[dataset_name]["testing_frames_cnt"]) - 4)
 
-            if auc >= best_auc:
-              best_auc = auc
-              best_frame_scores = frame_scores
-              best_w_r = w_r_
-              best_w_p = w_p_
-              best_w_p_ssim = w_p_ssim_
-              print(w_r_,w_p_,w_p_ssim_,best_auc)
+                if auc >= best_auc:
+                  best_auc = auc
+                  best_frame_scores = frame_scores
+                  best_w_r_of = w_r_of_
+                  best_w_r_mask = w_r_mask_
+                  best_w_p = w_p_
+                  best_w_p_ssim = w_p_ssim_
+                  print(best_w_r_of,best_w_r_mask,best_w_p,best_w_p_ssim,best_auc)
 
     curves_save_path = os.path.join(config["eval_root"], config["exp_name"], 'anomaly_curves_%s_ssim_mse' % suffix)
     auc = save_evaluation_curves(best_frame_scores, gt_concat, curves_save_path,
