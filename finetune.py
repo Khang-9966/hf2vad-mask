@@ -182,7 +182,7 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                 print("================ Best AUC %.4f ================" % best_auc)
                 writer.add_scalar("auc", auc, global_step=epoch + 1)
 
-
+from pytorch_msssim import  ms_ssim, SSIM, MS_SSIM
 def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_save_path):
     device = config["device"]
     model = HFVAD(num_hist=config["model_paras"]["clip_hist"],
@@ -208,7 +208,8 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
     of_training_stats = []
     mask_training_stats = []
     frame_training_stats = []
-
+    ssim_frame_training_stats = []
+    torch_ssim = SSIM(data_range=1, size_average=False, channel=3 ,win_size=7)
     print("=========Forward pass for training stats ==========")
     with torch.no_grad():
 
@@ -229,6 +230,7 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
                 loss_frame = score_func(out["frame_pred"], out["frame_target"]).cpu().data.numpy()
                 flow_loss = score_func(out["of_recon"], out["of_target"]).cpu().data.numpy()
                 mask_loss = score_func(out["mask_recon"], out["mask_target"]).cpu().data.numpy()
+                ssim_loss_frame = 1-torch_ssim(out["frame_pred"].cuda(), out["frame_target"].cuda()).cpu().data.numpy()
                 
                 flow_condi_gate_list.append(out["flow_condi_gate"].cpu().numpy())
                 mask_condi_gate_list.append(out["mask_condi_gate"].cpu().numpy())
@@ -236,10 +238,12 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
                 of_scores = np.sum(np.sum(np.sum(flow_loss, axis=3), axis=2), axis=1)
                 mask_scores = np.sum(np.sum(np.sum(mask_loss, axis=3), axis=2), axis=1)
                 frame_scores = np.sum(np.sum(np.sum(loss_frame, axis=3), axis=2), axis=1)
-
+                ssim_frame_scores = ssim_loss_frame
+                
                 of_training_stats.append(of_scores)
                 mask_training_stats.append(mask_scores)
                 frame_training_stats.append(frame_scores)
+                ssim_frame_training_stats.append(ssim_frame_scores)
             del dataset
             gc.collect()
 
@@ -249,12 +253,13 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
     of_training_stats = np.concatenate(of_training_stats, axis=0)
     mask_training_stats = np.concatenate(mask_training_stats, axis=0)
     frame_training_stats = np.concatenate(frame_training_stats, axis=0)
-
+    ssim_frame_training_stats = np.concatenate(ssim_frame_training_stats, axis=0)
+    
     training_stats = dict(of_training_stats=of_training_stats,
-                          frame_training_stats=frame_training_stats, mask_training_stats=mask_training_stats)
+                          frame_training_stats=frame_training_stats, mask_training_stats=mask_training_stats,
+                          ssim_frame_training_stats=ssim_frame_training_stats)
     # save to file
     torch.save(training_stats, stats_save_path)
-
 
 if __name__ == '__main__':
     config = yaml.safe_load(open("./cfgs/finetune_cfg.yaml"))
