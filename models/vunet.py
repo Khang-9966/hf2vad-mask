@@ -439,6 +439,7 @@ class VUnet(nn.Module):
         self.mask_1x1_atten_conv = nn.Conv2d(in_channels=128, out_channels=1, kernel_size=1)
         self.flow_sigmoid_gate = nn.Sigmoid()
         self.mask_sigmoid_gate = nn.Sigmoid()
+        self.softmax = nn.Softmax(dim=1)
 
     def forward(self, inputs, mode="train"):
         '''
@@ -462,8 +463,14 @@ class VUnet(nn.Module):
         mask_pool = self.mask_global_avgpooling(mask_x_e["s4_2"]) 
         # print("flow_pool", flow_pool.shape)
         # print("mask_pool", mask_pool.shape)
-        flow_condi_gate = self.flow_sigmoid_gate(self.flow_1x1_atten_conv(flow_pool))
-        mask_condi_gate = self.mask_sigmoid_gate(self.mask_1x1_atten_conv(mask_pool))
+        #flow_condi_gate = self.flow_sigmoid_gate(self.flow_1x1_atten_conv(flow_pool))
+        #mask_condi_gate = self.mask_sigmoid_gate(self.mask_1x1_atten_conv(mask_pool))
+        flow_condi_gate = self.flow_1x1_atten_conv(flow_pool)
+        mask_condi_gate = self.mask_1x1_atten_conv(mask_pool)
+        cat_gate = torch.cat((flow_condi_gate,mask_condi_gate),dim=1)
+        softmax_gate = self.softmax(cat_gate)
+        flow_condi_gate = softmax_gate[:,:1,:,:]
+        mask_condi_gate = softmax_gate[:,1:,:,:]
         # print("flow_condi_gate", flow_condi_gate.shape)
         # print("mask_condi_gate", mask_condi_gate.shape)
         x_e["s4_2"] = flow_condi_gate * flow_x_e["s4_2"] + mask_condi_gate * mask_x_e["s4_2"]
