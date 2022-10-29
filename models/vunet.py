@@ -379,7 +379,7 @@ class VUnet(nn.Module):
         # prosterior p( z | x_{1:t},y_{1:t} )
         self.f_phi = VUnetEncoder(
             n_stages=n_stages,
-            nf_in=img_channels * clip_hist + motion_channels * num_flows + mask_channels * num_masks,
+            nf_in=img_channels * num_flows + motion_channels * num_flows + mask_channels * num_masks,
             nf_start=nf_start,
             nf_max=nf_max,
             conv_layer=conv_layer_type,
