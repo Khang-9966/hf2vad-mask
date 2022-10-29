@@ -52,7 +52,7 @@ class HFVAD(nn.Module):
         """
 
         mask_att_weight3_cache, mask_att_weight2_cache, mask_att_weight1_cache = [], [], []
-        mask_recon = torch.zeros_like(sample_mask)
+        mask_recon = torch.zeros((sample_mask.shape[0],self.num_masks*self.mask_y_ch,sample_mask.shape[2],sample_mask.shape[3])).cuda()
         # reconstruct flows
         for j in range(self.num_masks):
             mask_memAE_out = self.memAE["mask"](sample_frame[:, 3 * j:3 * (j + 1), :, :])
@@ -74,7 +74,7 @@ class HFVAD(nn.Module):
             )
 
         flow_att_weight3_cache, flow_att_weight2_cache, flow_att_weight1_cache = [], [], []
-        flow_recon = torch.zeros_like(sample_of)
+        flow_recon = torch.zeros((sample_of.shape[0],self.num_flows*self.flow_y_ch,sample_of.shape[2],sample_of.shape[3])).cuda()
         # reconstruct flows
         for j in range(self.num_flows):
           flow_memAE_out = self.memAE["flow"](sample_frame[:, 3 * j:3 * (j + 2), :, :])
@@ -102,7 +102,7 @@ class HFVAD(nn.Module):
         frame_pred,flow_condi_gate,mask_condi_gate = self.vunet(input_dict, mode=mode)
 
         out = dict(frame_pred=frame_pred, frame_target=frame_target,
-                   of_recon=flow_recon, of_target=sample_of, mask_recon=mask_recon, mask_target=sample_mask,
+                   of_recon=flow_recon, of_target=sample_of, mask_recon=mask_recon, mask_target=sample_mask[:,:self.num_masks,:,:],
                    flow_condi_gate=flow_condi_gate,mask_condi_gate=mask_condi_gate)
         out.update(self.vunet.saved_tensors)
 
