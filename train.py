@@ -135,7 +135,7 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                     writer.add_figure("img/train_mask_recon",
                                       visualize_sequences(img_batch_tensor2numpy(
                                           out["mask_recon"].detach().cpu()[:num_vis, :, :, :]),
-                                          seq_len=sample_masks.size(1) ,
+                                          seq_len=out["mask_recon"].size(1) ,
                                           return_fig=True),
                                       global_step=step + 1)
 
