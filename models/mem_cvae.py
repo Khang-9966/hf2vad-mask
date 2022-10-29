@@ -22,7 +22,9 @@ class HFVAD(nn.Module):
         self.skip_ops = skip_ops
         self.mem_usage = mem_usage
         self.finetune = finetune
-
+        self.num_flows = retrieve(config, "model_paras/num_flows", default=4)
+        self.num_masks = retrieve(config, "model_paras/num_masks", default=4)
+        
         self.x_ch = 3  # num of RGB channels
         self.mask_y_ch = 1  # num of optical flow channels
         self.flow_y_ch = 2  # num of optical flow channels
@@ -52,7 +54,7 @@ class HFVAD(nn.Module):
         mask_att_weight3_cache, mask_att_weight2_cache, mask_att_weight1_cache = [], [], []
         mask_recon = torch.zeros_like(sample_mask)
         # reconstruct flows
-        for j in range(self.num_hist):
+        for j in range(self.num_masks):
             mask_memAE_out = self.memAE["mask"](sample_frame[:, 3 * j:3 * (j + 1), :, :])
             mask_recon[:, 1 * j:1 * (j + 1), :, :] = mask_memAE_out["recon"]
             mask_att_weight3_cache.append(mask_memAE_out["att_weight3"])
@@ -74,7 +76,7 @@ class HFVAD(nn.Module):
         flow_att_weight3_cache, flow_att_weight2_cache, flow_att_weight1_cache = [], [], []
         flow_recon = torch.zeros_like(sample_of)
         # reconstruct flows
-        for j in range(self.num_hist):
+        for j in range(self.num_flows):
           flow_memAE_out = self.memAE["flow"](sample_frame[:, 3 * j:3 * (j + 2), :, :])
           flow_recon[:, 2 * j:2 * (j + 1), :, :] = flow_memAE_out["recon"]
           flow_att_weight3_cache.append(flow_memAE_out["att_weight3"])
