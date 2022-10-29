@@ -233,12 +233,12 @@ if __name__ == '__main__':
     testing_chunked_samples_file = os.path.join("./data", config["dataset_name"],
                                                 "testing/chunked_samples/chunked_samples_00.pkl")
 
-    from train import cal_training_stats_ssim
+    from train import cal_training_stats
 
     os.makedirs(os.path.join("./eval", config["exp_name"]), exist_ok=True)
     training_chunked_samples_dir = os.path.join("./data", config["dataset_name"], "training/chunked_samples")
     training_stat_path = os.path.join("./eval", config["exp_name"], "training_stats_ssim.npy")
-    cal_training_stats_ssim_mse(config, args.model_save_path, training_chunked_samples_dir, training_stat_path)
+    cal_training_stats(config, args.model_save_path, training_chunked_samples_dir, training_stat_path)
 
     with torch.no_grad():
         auc = evaluate(config, args.model_save_path,
