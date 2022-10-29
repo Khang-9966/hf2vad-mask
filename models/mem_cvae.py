@@ -3,6 +3,7 @@ from torch import nn
 from models.vunet import VUnet
 from models.ml_memAE_sc import ML_MemAE_SC
 from torch.nn import ModuleDict, ModuleList
+from edflow.util import retrieve
 
 class HFVAD(nn.Module):
     """
