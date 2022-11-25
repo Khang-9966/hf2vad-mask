@@ -172,15 +172,15 @@ def train(config, training_chunked_samples_dir, testing_chunked_samples_file):
                                stats_save_path)
 
             with torch.no_grad():
-                auc = evaluate(config, model_save_path + "-%d" % (epoch + 1),
+                # auc = evaluate(config, model_save_path + "-%d" % (epoch + 1),
+                #                testing_chunked_samples_file,
+                #                stats_save_path,
+                #                suffix=str(epoch + 1))
+                auc = ssim_evaluate(config, model_save_path + "-%d" % (epoch + 1),
                                testing_chunked_samples_file,
                                stats_save_path,
                                suffix=str(epoch + 1))
-                ssim_auc = ssim_evaluate(config, model_save_path + "-%d" % (epoch + 1),
-                               testing_chunked_samples_file,
-                               stats_save_path,
-                               suffix=str(epoch + 1))
-                auc = ssim_auc if ssim_auc > auc else auc
+                # auc = ssim_auc if ssim_auc > auc else auc
                 
                 if auc > best_auc:
                     best_auc = auc
@@ -209,8 +209,7 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
     score_func = nn.MSELoss(reduction="none")
     training_chunk_samples_files = sorted(os.listdir(training_chunked_samples_dir))
 
-    flow_condi_gate_list = []
-    mask_condi_gate_list = []
+    condi_gate = {"s4_2":[],"s4_1":[],"s3_2":[],"s3_1":[]}
     of_training_stats = []
     mask_training_stats = []
     frame_training_stats = []
@@ -238,8 +237,8 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
                 mask_loss = score_func(out["mask_recon"], out["mask_target"]).cpu().data.numpy()
                 ssim_loss_frame = 1-torch_ssim(out["frame_pred"].cuda(), out["frame_target"].cuda()).cpu().data.numpy()
                 
-                flow_condi_gate_list.append(out["flow_condi_gate"].cpu().numpy())
-                mask_condi_gate_list.append(out["mask_condi_gate"].cpu().numpy())
+                for layer_name in ["s4_2","s4_1","s3_2","s3_1"]:
+                  condi_gate[layer_name] += list(out["condi_gate"][layer_name].cpu().numpy())
 
                 of_scores = np.sum(np.sum(np.sum(flow_loss, axis=3), axis=2), axis=1)
                 mask_scores = np.sum(np.sum(np.sum(mask_loss, axis=3), axis=2), axis=1)
@@ -254,13 +253,16 @@ def cal_training_stats(config, ckpt_path, training_chunked_samples_dir, stats_sa
             gc.collect()
 
     print("=========Forward pass for training stats done!==========")
-    print("Train flow_condi_gate_mean: ", np.array(flow_condi_gate_list).mean())
-    print("Train mask_condi_gate_mean: ", np.array(mask_condi_gate_list).mean())
     of_training_stats = np.concatenate(of_training_stats, axis=0)
     mask_training_stats = np.concatenate(mask_training_stats, axis=0)
     frame_training_stats = np.concatenate(frame_training_stats, axis=0)
     ssim_frame_training_stats = np.concatenate(ssim_frame_training_stats, axis=0)
-    
+    for layer_name in ["s4_2","s4_1","s3_2","s3_1"]:
+      vil_gate = np.array(condi_gate[layer_name])
+      print(vil_gate.shape)
+      vil_gate = vil_gate.reshape((-1,2,vil_gate.shape[-2],vil_gate.shape[-1]))
+      print(layer_name, vil_gate.mean(0)[:1,:,:])
+
     training_stats = dict(of_training_stats=of_training_stats,
                           frame_training_stats=frame_training_stats, mask_training_stats=mask_training_stats,
                           ssim_frame_training_stats=ssim_frame_training_stats)

@@ -90,8 +90,7 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
 
     # bbox anomaly scores for each frame
     
-    flow_condi_gate_list = []
-    mask_condi_gate_list = []
+    condi_gate = {"s4_2":[],"s4_1":[],"s3_2":[],"s3_1":[]}
     
     of_scores_list = []
     mask_scores_list = []
@@ -126,16 +125,19 @@ def evaluate(config, ckpt_path, testing_chunked_samples_file, training_stats_pat
             frame_scores = (frame_scores - frame_mean) / frame_std
             ssim_frame_scores = (ssim_frame_scores - ssim_frame_mean) / ssim_frame_std
 
-        flow_condi_gate_list.append(out_test["flow_condi_gate"].cpu().numpy())
-        mask_condi_gate_list.append(out_test["mask_condi_gate"].cpu().numpy())
+        for layer_name in ["s4_2","s4_1","s3_2","s3_1"]:
+          condi_gate[layer_name] += list(out_test["condi_gate"][layer_name].cpu().numpy())
         of_scores_list.append(of_scores)
         mask_scores_list.append(mask_scores)
         frame_scores_list.append(frame_scores)
         pred_frame_test_list.append(pred_frame_test)
         ssim_frame_scores_list.append(ssim_frame_scores)
 
-    print("Test flow_condi_gate_mean: ", np.array(flow_condi_gate_list).mean())
-    print("Test mask_condi_gate_mean: ", np.array(mask_condi_gate_list).mean())
+    for layer_name in ["s4_2","s4_1","s3_2","s3_1"]:
+      vil_gate = np.array(condi_gate[layer_name])
+      print(vil_gate.shape)
+      vil_gate = vil_gate.reshape((-1,2,vil_gate.shape[-2],vil_gate.shape[-1]))
+      print(layer_name, vil_gate.mean(0)[:1,:,:])
 
     del dataset_test
     best_auc = 0

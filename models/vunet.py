@@ -441,6 +441,27 @@ class VUnet(nn.Module):
         self.mask_sigmoid_gate = nn.Sigmoid()
         self.softmax = nn.Softmax(dim=1)
 
+        self.flow_z_linear_project_conv = ModuleDict()
+        self.mask_z_linear_project_conv = ModuleDict()
+        self.softmax_gate_conv = ModuleDict()
+
+        for layer_name in ["s4_2","s4_1","s3_2","s3_1"]:
+          self.flow_z_linear_project_conv[layer_name] = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=1)
+          self.mask_z_linear_project_conv[layer_name] = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=1)
+          self.softmax_gate_conv[layer_name] = nn.Conv2d(in_channels=256, out_channels=2, kernel_size=1)
+
+    def combine_z_layer(self,mask_z,flow_z,layer_name):
+      cat_gate = torch.cat((mask_z[layer_name],flow_z[layer_name]),dim=1)
+      cat_gate = self.softmax_gate_conv[layer_name](cat_gate)
+      softmax_gate = self.softmax(cat_gate)
+      flow_condi_gate = softmax_gate[:,:1,:,:]
+      mask_condi_gate = softmax_gate[:,1:,:,:]
+      flow_z = self.flow_z_linear_project_conv[layer_name](flow_z[layer_name])
+      mask_z = self.mask_z_linear_project_conv[layer_name](mask_z[layer_name])
+      combine_z = flow_condi_gate*flow_z + mask_condi_gate*mask_z
+      return combine_z,softmax_gate
+
+
     def forward(self, inputs, mode="train"):
         '''
         Two possible usage：
@@ -457,27 +478,15 @@ class VUnet(nn.Module):
         # encoding features of flows
         flow_x_e = self.e_theta_flow(inputs['motion'])
         mask_x_e = self.e_theta_mask(inputs['mask'])
-
+        
+        x_gate = {}
         x_e = {}
-        flow_pool = self.flow_global_avgpooling(flow_x_e["s4_2"])
-        mask_pool = self.mask_global_avgpooling(mask_x_e["s4_2"]) 
-        # print("flow_pool", flow_pool.shape)
-        # print("mask_pool", mask_pool.shape)
-        #flow_condi_gate = self.flow_sigmoid_gate(self.flow_1x1_atten_conv(flow_pool))
-        #mask_condi_gate = self.mask_sigmoid_gate(self.mask_1x1_atten_conv(mask_pool))
-        flow_condi_gate = self.flow_1x1_atten_conv(flow_pool)
-        mask_condi_gate = self.mask_1x1_atten_conv(mask_pool)
-        cat_gate = torch.cat((flow_condi_gate,mask_condi_gate),dim=1)
-        softmax_gate = self.softmax(cat_gate)
-        flow_condi_gate = softmax_gate[:,:1,:,:]
-        mask_condi_gate = softmax_gate[:,1:,:,:]
-        # print("flow_condi_gate", flow_condi_gate.shape)
-        # print("mask_condi_gate", mask_condi_gate.shape)
-        x_e["s4_2"] = flow_condi_gate * flow_x_e["s4_2"] + mask_condi_gate * mask_x_e["s4_2"]
-        x_e["s4_1"] = flow_condi_gate * flow_x_e["s4_1"] + mask_condi_gate * mask_x_e["s4_1"]
-        x_e["s3_2"] = flow_condi_gate * flow_x_e["s3_2"] + mask_condi_gate * mask_x_e["s3_2"]
-        x_e["s3_1"] = flow_condi_gate * flow_x_e["s3_1"] + mask_condi_gate * mask_x_e["s3_1"]
+        x_e["s4_2"],x_gate["s4_2"] = self.combine_z_layer(mask_x_e,flow_x_e,"s4_2")
+        x_e["s4_1"],x_gate["s4_1"] = self.combine_z_layer(mask_x_e,flow_x_e,"s4_1")
+        x_e["s3_2"],x_gate["s3_2"] = self.combine_z_layer(mask_x_e,flow_x_e,"s3_2")
+        x_e["s3_1"],x_gate["s3_1"] = self.combine_z_layer(mask_x_e,flow_x_e,"s3_1")
 
+        
         if mode == "train":
             out_b, p_means, ps = self.bottleneck(x_e, zs)  # h, p_params, z_prior
         else:
@@ -487,4 +496,4 @@ class VUnet(nn.Module):
         out_img = self.decoder(out_b, x_f)
 
         self.saved_tensors = dict(q_means=q_means, p_means=p_means)
-        return out_img,flow_condi_gate.mean(),mask_condi_gate.mean()
+        return out_img,x_gate

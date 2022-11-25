@@ -64,7 +64,7 @@ class HFVAD(nn.Module):
         mask_att_weight2 = torch.cat(mask_att_weight2_cache, dim=0)
         mask_att_weight1 = torch.cat(mask_att_weight1_cache, dim=0)
         if self.finetune:
-            mask_loss_recon = self.mse_loss(mask_recon, sample_mask)
+            mask_loss_recon = self.mse_loss(mask_recon, sample_mask[:,:self.num_masks*self.mask_y_ch,:,:])
             mask_loss_sparsity = torch.mean(
                 torch.sum(-mask_att_weight3 * torch.log(mask_att_weight3 + 1e-12), dim=1)
             ) + torch.mean(
@@ -99,11 +99,11 @@ class HFVAD(nn.Module):
         frame_target = sample_frame[:, -self.x_ch * self.num_pred:, :, :]
 
         input_dict = dict(appearance=frame_in, motion=flow_recon, mask=mask_recon)
-        frame_pred,flow_condi_gate,mask_condi_gate = self.vunet(input_dict, mode=mode)
+        frame_pred,condi_gate = self.vunet(input_dict, mode=mode)
 
         out = dict(frame_pred=frame_pred, frame_target=frame_target,
                    of_recon=flow_recon, of_target=sample_of, mask_recon=mask_recon, mask_target=sample_mask[:,:self.num_masks,:,:],
-                   flow_condi_gate=flow_condi_gate,mask_condi_gate=mask_condi_gate)
+                   condi_gate=condi_gate)
         out.update(self.vunet.saved_tensors)
 
         if self.finetune:
